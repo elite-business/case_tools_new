@@ -1,0 +1,519 @@
+/* 
+ * Grafana-like Professional Alert Rule Builder
+ * NO DECORATIVE ELEMENTS - Pure functional design
+ */
+
+/* Color Variables */
+:root {
+  /* Light Theme - Grafana Colors (WCAG 2.1 AAA compliant) */
+  --grafana-bg: #ffffff;
+  --grafana-panel: #f9fafb;  /* L1 surface elevation */
+  --grafana-border: #e1e4e8;
+  --grafana-text-primary: #111111;
+  --grafana-text-secondary: #70757a;
+  --grafana-text-muted: #9fa7b0;
+  --grafana-primary: #2B4C7E;  /* Deep Indigo from style guide */
+  --grafana-danger: #dc2626;   /* Rose 600 */
+  --grafana-warning: #f59e0b;  /* Amber 500 */
+  --grafana-success: #059669;  /* Emerald 600 */
+  --grafana-info: #0284c7;     /* Sky 600 */
+  --grafana-hover: #f7f8fa;
+  --grafana-focus: rgba(43, 76, 126, 0.2);
+}
+
+.dark:root {
+  /* Dark Theme - Grafana Colors */
+  --grafana-bg: #111217;
+  --grafana-panel: #181b1f;
+  --grafana-border: #303339;
+  --grafana-text-primary: #c7d0d9;
+  --grafana-text-secondary: #9fa7b0;
+  --grafana-text-muted: #6e7681;
+  --grafana-primary: #5794f2;
+  --grafana-danger: #e02f44;
+  --grafana-warning: #ff9830;
+  --grafana-success: #37872d;
+  --grafana-hover: #262a2f;
+  --grafana-focus: rgba(87, 148, 242, 0.2);
+}
+
+/* Main Container */
+.grafana-rule-builder {
+  max-width: 1200px;
+  margin: 0 auto;
+  background: var(--grafana-bg);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: var(--grafana-text-primary);
+  min-height: 100vh;
+}
+
+/* Header Section */
+.grafana-rule-header {
+  padding: 16px 0 24px 0;
+  border-bottom: 1px solid var(--grafana-border);
+  margin-bottom: 24px;
+}
+
+.grafana-rule-header h1 {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--grafana-text-primary);
+  margin: 0 0 4px 0;
+  line-height: 1.4;
+}
+
+.grafana-rule-header .subtitle {
+  font-size: 13px;
+  color: var(--grafana-text-secondary);
+  margin: 0;
+  font-weight: 400;
+}
+
+/* Section Container */
+.grafana-rule-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Individual Section */
+.grafana-rule-section {
+  border: 1px solid var(--grafana-border);
+  background: var(--grafana-panel);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.grafana-rule-section-content {
+  padding: 16px;
+}
+
+/* Section Headers */
+.grafana-section-title {
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--grafana-text-secondary);
+  margin: 0 0 16px 0;
+  padding: 0 0 8px 0;
+  border-bottom: 1px solid var(--grafana-border);
+  background: none;
+}
+
+/* Form Layout */
+.grafana-form-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.grafana-form-grid--two-col {
+  grid-template-columns: 1fr 1fr;
+}
+
+.grafana-form-grid--three-col {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.grafana-form-grid--inline {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Form Fields */
+.grafana-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.grafana-field-label {
+  font-size: 14px;  /* Enterprise default body text */
+  font-weight: 500;  /* Medium weight for interactive labels */
+  color: var(--grafana-text-secondary);
+  margin: 0;
+  line-height: 1.5;  /* Generous line height for readability */
+}
+
+.grafana-field-description {
+  font-size: 11px;
+  color: var(--grafana-text-muted);
+  margin: 0;
+  line-height: 1.3;
+}
+
+/* Input Overrides */
+.grafana-rule-builder .ant-input,
+.grafana-rule-builder .ant-input-affix-wrapper,
+.grafana-rule-builder .ant-select-selector,
+.grafana-rule-builder .ant-input-number,
+.grafana-rule-builder .ant-picker {
+  border-radius: 2px !important;
+  border: 1px solid var(--grafana-border) !important;
+  background: var(--grafana-bg) !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  color: var(--grafana-text-primary) !important;
+  box-shadow: none !important;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out !important;
+}
+
+.grafana-rule-builder .ant-input:hover,
+.grafana-rule-builder .ant-input-affix-wrapper:hover,
+.grafana-rule-builder .ant-select-selector:hover,
+.grafana-rule-builder .ant-input-number:hover,
+.grafana-rule-builder .ant-picker:hover {
+  border-color: var(--grafana-primary) !important;
+  box-shadow: none !important;
+}
+
+.grafana-rule-builder .ant-input:focus,
+.grafana-rule-builder .ant-input-affix-wrapper-focused,
+.grafana-rule-builder .ant-select-focused .ant-select-selector,
+.grafana-rule-builder .ant-input-number-focused,
+.grafana-rule-builder .ant-picker-focused {
+  border-color: var(--grafana-primary) !important;
+  box-shadow: 0 0 0 2px var(--grafana-focus) !important;
+  outline: none !important;
+}
+
+.grafana-rule-builder .ant-input::placeholder,
+.grafana-rule-builder .ant-input-affix-wrapper input::placeholder {
+  color: var(--grafana-text-muted) !important;
+  font-style: normal !important;
+}
+
+/* Select Overrides */
+.grafana-rule-builder .ant-select {
+  font-size: 13px !important;
+}
+
+.grafana-rule-builder .ant-select-selection-item {
+  color: var(--grafana-text-primary) !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+}
+
+.grafana-rule-builder .ant-select-selection-placeholder {
+  color: var(--grafana-text-muted) !important;
+  font-size: 13px !important;
+}
+
+/* Button Overrides - High-visibility focus rings */
+.grafana-rule-builder .ant-btn {
+  border-radius: 2px !important;
+  border: 1px solid var(--grafana-border) !important;
+  box-shadow: none !important;
+  font-size: 14px !important;  /* Enterprise default from style guide */
+  font-weight: 500 !important;
+  height: 32px !important;
+  padding: 6px 12px !important;
+  line-height: 1.4 !important;
+  transition: all 0.15s ease-in-out !important;
+}
+
+.grafana-rule-builder .ant-btn:focus {
+  outline: 2px solid var(--grafana-primary) !important;
+  outline-offset: 2px !important;
+}
+
+.grafana-rule-builder .ant-btn-default {
+  background: var(--grafana-bg) !important;
+  color: var(--grafana-text-primary) !important;
+}
+
+.grafana-rule-builder .ant-btn-default:hover {
+  background: var(--grafana-hover) !important;
+  border-color: var(--grafana-primary) !important;
+  color: var(--grafana-text-primary) !important;
+}
+
+.grafana-rule-builder .ant-btn-primary {
+  background: var(--grafana-primary) !important;
+  border-color: var(--grafana-primary) !important;
+  color: #ffffff !important;
+}
+
+.grafana-rule-builder .ant-btn-primary:hover {
+  background: #4a90e2 !important;
+  border-color: #4a90e2 !important;
+  color: #ffffff !important;
+}
+
+/* Remove ALL icons from buttons */
+.grafana-rule-builder .ant-btn .anticon {
+  display: none !important;
+}
+
+/* SQL Editor */
+.grafana-sql-editor {
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace !important;
+  font-size: 13px !important;
+  line-height: 1.5 !important;
+  background: var(--grafana-bg) !important;
+  border: 1px solid var(--grafana-border) !important;
+  border-radius: 2px !important;
+  color: var(--grafana-text-primary) !important;
+  padding: 12px !important;
+  resize: vertical !important;
+  min-height: 120px !important;
+}
+
+.grafana-sql-editor:focus {
+  border-color: var(--grafana-primary) !important;
+  box-shadow: 0 0 0 2px var(--grafana-focus) !important;
+  outline: none !important;
+}
+
+.grafana-sql-editor::placeholder {
+  color: var(--grafana-text-muted) !important;
+  font-style: italic !important;
+}
+
+/* Table Overrides */
+.grafana-rule-builder .ant-table-wrapper {
+  border: 1px solid var(--grafana-border) !important;
+  border-radius: 2px !important;
+}
+
+.grafana-rule-builder .ant-table {
+  font-size: 13px !important;
+  background: var(--grafana-bg) !important;
+}
+
+.grafana-rule-builder .ant-table-thead > tr > th {
+  background: var(--grafana-panel) !important;
+  border-bottom: 1px solid var(--grafana-border) !important;
+  color: var(--grafana-text-primary) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  padding: 8px 12px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+}
+
+.grafana-rule-builder .ant-table-tbody > tr > td {
+  border-bottom: 1px solid var(--grafana-border) !important;
+  color: var(--grafana-text-primary) !important;
+  font-size: 13px !important;
+  padding: 8px 12px !important;
+}
+
+.grafana-rule-builder .ant-table-tbody > tr:hover > td {
+  background: var(--grafana-hover) !important;
+}
+
+/* Typography Overrides */
+.grafana-rule-builder .ant-typography {
+  color: var(--grafana-text-primary) !important;
+}
+
+.grafana-rule-builder .ant-typography h1,
+.grafana-rule-builder .ant-typography h2,
+.grafana-rule-builder .ant-typography h3,
+.grafana-rule-builder .ant-typography h4,
+.grafana-rule-builder .ant-typography h5 {
+  color: var(--grafana-text-primary) !important;
+  margin-bottom: 0 !important;
+}
+
+.grafana-rule-builder .ant-typography-secondary {
+  color: var(--grafana-text-secondary) !important;
+}
+
+/* Form Item Overrides */
+.grafana-rule-builder .ant-form-item {
+  margin-bottom: 16px !important;
+}
+
+.grafana-rule-builder .ant-form-item-label > label {
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  color: var(--grafana-text-secondary) !important;
+  height: auto !important;
+  line-height: 1.4 !important;
+}
+
+.grafana-rule-builder .ant-form-item-label > label::after {
+  display: none !important;
+}
+
+.grafana-rule-builder .ant-form-item-required::before {
+  color: var(--grafana-danger) !important;
+}
+
+/* Remove Card styling - use plain sections */
+.grafana-rule-builder .ant-card {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.grafana-rule-builder .ant-card-head {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  min-height: auto !important;
+}
+
+.grafana-rule-builder .ant-card-body {
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.grafana-rule-builder .ant-card-head-title {
+  padding: 0 !important;
+  margin: 0 !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+  color: var(--grafana-text-secondary) !important;
+}
+
+/* Spacing Utilities */
+.grafana-space-y-4 > * + * {
+  margin-top: 16px;
+}
+
+.grafana-space-y-2 > * + * {
+  margin-top: 8px;
+}
+
+.grafana-space-x-2 > * + * {
+  margin-left: 8px;
+}
+
+/* Action Bar */
+.grafana-action-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 0;
+  border-top: 1px solid var(--grafana-border);
+  margin-top: 24px;
+}
+
+.grafana-action-group {
+  display: flex;
+  gap: 8px;
+}
+
+/* Query Results Section */
+.grafana-query-results {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--grafana-border);
+}
+
+.grafana-query-results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.grafana-query-results-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--grafana-text-primary);
+  margin: 0;
+}
+
+.grafana-query-results-meta {
+  font-size: 12px;
+  color: var(--grafana-text-secondary);
+}
+
+/* Loading States */
+.grafana-rule-builder .ant-spin-dot-item {
+  background-color: var(--grafana-primary) !important;
+}
+
+/* Alert Messages */
+.grafana-rule-builder .ant-alert {
+  border-radius: 2px !important;
+  border-width: 1px !important;
+  font-size: 13px !important;
+}
+
+.grafana-rule-builder .ant-alert-success {
+  border-color: var(--grafana-success) !important;
+  background: rgba(41, 156, 70, 0.1) !important;
+  color: var(--grafana-success) !important;
+}
+
+.grafana-rule-builder .ant-alert-warning {
+  border-color: var(--grafana-warning) !important;
+  background: rgba(255, 152, 48, 0.1) !important;
+  color: var(--grafana-warning) !important;
+}
+
+.grafana-rule-builder .ant-alert-error {
+  border-color: var(--grafana-danger) !important;
+  background: rgba(224, 47, 68, 0.1) !important;
+  color: var(--grafana-danger) !important;
+}
+
+/* Remove Dividers */
+.grafana-rule-builder .ant-divider {
+  display: none !important;
+}
+
+/* Dense Layout Options */
+.grafana-rule-builder--compact .grafana-rule-section-content {
+  padding: 12px;
+}
+
+.grafana-rule-builder--compact .grafana-form-grid {
+  gap: 12px;
+}
+
+.grafana-rule-builder--compact .grafana-rule-builder .ant-form-item {
+  margin-bottom: 12px !important;
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .grafana-form-grid--two-col,
+  .grafana-form-grid--three-col {
+    grid-template-columns: 1fr;
+  }
+  
+  .grafana-rule-builder {
+    margin: 0 16px;
+  }
+  
+  .grafana-action-bar {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+  
+  .grafana-action-group {
+    justify-content: center;
+  }
+}
+
+/* Remove Text Decoration and Focus Outlines */
+.grafana-rule-builder a {
+  text-decoration: none !important;
+}
+
+.grafana-rule-builder *:focus {
+  outline: none !important;
+}
+
+/* Message Override */
+.grafana-rule-builder .ant-message {
+  font-size: 13px !important;
+}
+
+.grafana-rule-builder .ant-message-notice-content {
+  border-radius: 2px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
+}
