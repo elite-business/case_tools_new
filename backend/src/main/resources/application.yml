@@ -1,0 +1,207 @@
+spring:
+  application:
+    name: CaseTools
+    version: 2.0.0
+    
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+    
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://172.29.112.1:5432/raftools2}
+    username: ${DATABASE_USERNAME:postgres}
+    password: ${DATABASE_PASSWORD:root}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          lob:
+            non_contextual_creation: true
+          batch_size: 20
+        default_schema: public
+        format_sql: true
+        show_sql: false
+        use_sql_comments: true
+        order_inserts: true
+        order_updates: true
+        
+  liquibase:
+    enabled: false  # Will enable when we have migration scripts
+    change-log: classpath:db/changelog/db.changelog-master.xml
+    
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:alerts@elite.com}
+    password: ${MAIL_PASSWORD:}
+    test-connection: false
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
+  security:
+    jwt:
+      secret: ${JWT_SECRET}
+      expiration: 3600000  # 1 hour
+      refresh-expiration: 86400000  # 24 hours
+      
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: /api
+  error:
+    include-message: always
+    include-binding-errors: always
+    include-stacktrace: on_param
+    include-exception: false
+    
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+        
+logging:
+  level:
+    root: WARN
+    com.elite.casetools: WARN
+    org.springframework.security: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/casetools.log
+    max-size: 10MB
+    max-history: 30
+    
+# Grafana Integration
+grafana:
+  url: ${GRAFANA_URL}
+  api-token: ${GRAFANA_API_KEY}
+  datasource-uid: ${GRAFANA_DATASOURCE_UID}
+  folder-uid: ${GRAFANA_FOLDER_UID}
+  notification-channel-uid: ${GRAFANA_NOTIFICATION_CHANNEL}
+  timeout: 30000
+  validate-ssl: false
+  organization-id: "1"
+  webhook:
+    secret: ${WEBHOOK_SECRET}
+    
+# Application Configuration
+application:
+  cors:
+    allowed-origins: ${CORS_ORIGINS:http://localhost:9000,http://localhost:3001}
+    allowed-methods: GET, POST, PUT, DELETE, OPTIONS
+    allowed-headers: "*"
+    allow-credentials: true
+    max-age: 3600
+    
+  notification:
+    email:
+      enabled: false
+      from: ${EMAIL_FROM:alerts@elite.com}
+      from-name: CaseTools Alerts
+    webhook:
+      enabled: true
+      retry-attempts: 3
+      retry-delay: 5000
+      
+  alert:
+    duplicate-window-minutes: 5
+    auto-assign: true
+    sla:
+      critical-minutes: 15
+      high-minutes: 60
+      medium-minutes: 240
+      low-minutes: 1440
+      
+  case:
+    auto-close-resolved: true
+    retention-days: 365
+    
+  rule-builder:
+    max-query-execution-time: 30000
+    max-result-rows: 1000
+    test-mode-enabled: true
+    
+# API Documentation
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    try-it-out-enabled: true
+    filter: true
+    
+---
+# Development Profile
+spring:
+  config:
+    activate:
+      on-profile: dev
+      
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+    
+  h2:
+    console:
+      enabled: false
+      
+logging:
+  level:
+    root: WARN
+    
+---
+# Production Profile
+spring:
+  config:
+    activate:
+      on-profile: prod
+      
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    
+logging:
+  level:
+    root: WARN
+    com.elite.casetools: INFO
+    
+server:
+  port: 8080
+  
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, metrics

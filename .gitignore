@@ -1,0 +1,111 @@
+####################################
+# OS / SYSTEM
+####################################
+.DS_Store
+Thumbs.db
+ehthumbs.db
+*.swp
+*.swo
+*.tmp
+*.bak
+*~
+.nfs*
+
+####################################
+# EDITORS / IDEs
+####################################
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+.settings/
+.project
+.classpath
+
+####################################
+# ENV FILES (SECRETS)
+####################################
+.env
+.env.*
+!.env.example
+
+####################################
+# LOGS
+####################################
+logs/
+*.log
+nohup.out
+
+####################################
+# JAVA / SPRING BOOT (backend)
+####################################
+backend/target/
+backend/.mvn/
+backend/logs/
+
+# Compiled classes
+*.class
+
+# Package files
+*.jar
+*.war
+*.ear
+
+# JVM crash logs
+hs_err_pid*
+
+####################################
+# NODE / NUXT / NEXT (frontend)
+####################################
+frontend/node_modules/
+frontend/.nuxt/
+frontend/.next/
+frontend/dist/
+frontend/.output/
+frontend/.cache/
+frontend/coverage/
+
+# Nuxt/Next build cache
+.next/
+.nuxt/
+
+####################################
+# PLAYWRIGHT
+####################################
+frontend/test-results/
+frontend/playwright-report/
+frontend/.playwright/
+
+####################################
+# TYPESCRIPT
+####################################
+*.tsbuildinfo
+
+####################################
+# PACKAGE MANAGERS
+####################################
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+####################################
+# TEST / REPORTS
+####################################
+coverage/
+reports/
+test-results/
+
+####################################
+# DOCKER (optional safety)
+####################################
+*.pid
+
+####################################
+# MISC
+####################################
+*.local
+*.lock
+.cache/
+.tmp/
