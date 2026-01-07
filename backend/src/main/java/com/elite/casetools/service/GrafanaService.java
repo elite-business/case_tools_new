@@ -27,7 +27,333 @@ public class GrafanaService {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
     
+    /**
+     * Get all Grafana alert rules
+     */
+    public List<GrafanaAlertRuleResponse> getAlertRules() {
+        log.info("Fetching all Grafana alert rules");
+        
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set(HttpHeaders.AUTHORIZATION, grafanaConfig.getAuthHeader());
+            
+            HttpEntity<Void> entity = new HttpEntity<>(headers);
+            
+            String url = grafanaConfig.getApiUrl() + "/v1/provisioning/alert-rules";
+            ResponseEntity<JsonNode> response = restTemplate.exchange(
+                url,
+                HttpMethod.GET,
+                entity,
+                JsonNode.class
+            );
+            
+            List<GrafanaAlertRuleResponse> rules = new ArrayList<>();
+            if (response.getBody() != null && response.getBody().isArray()) {
+                for (JsonNode ruleNode : response.getBody()) {
+                    rules.add(mapToAlertRuleResponse(ruleNode));
+                }
+            }
+            
+            log.info("Successfully fetched {} Grafana alert rules", rules.size());
+            return rules;
+            
+        } catch (Exception e) {
+            log.error("Error fetching Grafana alert rules: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to fetch alert rules from Grafana: " + e.getMessage());
+        }
+    }
     
+    /**
+     * Get a specific Grafana alert rule
+     */
+    public GrafanaAlertRuleResponse getAlertRule(String uid) {
+        log.info("Fetching Grafana alert rule: {}", uid);
+        
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set(HttpHeaders.AUTHORIZATION, grafanaConfig.getAuthHeader());
+            
+            HttpEntity<Void> entity = new HttpEntity<>(headers);
+            
+            String url = grafanaConfig.getApiUrl() + "/v1/provisioning/alert-rules/" + uid;
+            ResponseEntity<JsonNode> response = restTemplate.exchange(
+                url,
+                HttpMethod.GET,
+                entity,
+                JsonNode.class
+            );
+            
+            if (response.getBody() != null) {
+                return mapToAlertRuleResponse(response.getBody());
+            }
+            
+            throw new RuntimeException("Alert rule not found");
+            
+        } catch (HttpClientErrorException.NotFound e) {
+            log.warn("Alert rule not found in Grafana: {}", uid);
+            throw new RuntimeException("Alert rule not found: " + uid);
+        } catch (Exception e) {
+            log.error("Error fetching Grafana alert rule: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to fetch alert rule from Grafana: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Create a new Grafana alert rule
+     */
+    public GrafanaAlertRuleResponse createAlertRule(CreateGrafanaAlertRuleRequest request, String createdBy) {
+        log.info("Creating new Grafana alert rule: {}", request.getTitle());
+        
+        try {
+            ObjectNode ruleJson = buildAlertRuleJson(request);
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set(HttpHeaders.AUTHORIZATION, grafanaConfig.getAuthHeader());
+            
+            HttpEntity<String> entity = new HttpEntity<>(ruleJson.toString(), headers);
+            
+            String url = grafanaConfig.getApiUrl() + "/v1/provisioning/alert-rules";
+            ResponseEntity<JsonNode> response = restTemplate.exchange(
+                url,
+                HttpMethod.POST,
+                entity,
+                JsonNode.class
+            );
+            
+            if (response.getBody() != null) {
+                GrafanaAlertRuleResponse ruleResponse = mapToAlertRuleResponse(response.getBody());
+                log.info("Successfully created Grafana alert rule: {}", ruleResponse.getUid());
+                return ruleResponse;
+            }
+            
+            throw new RuntimeException("Failed to create alert rule");
+            
+        } catch (Exception e) {
+            log.error("Error creating Grafana alert rule: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to create alert rule in Grafana: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Update an existing Grafana alert rule
+     */
+    public GrafanaAlertRuleResponse updateAlertRule(String uid, UpdateGrafanaAlertRuleRequest request, String updatedBy) {
+        log.info("Updating Grafana alert rule: {}", uid);
+        
+        try {
+            // First get the existing rule
+            GrafanaAlertRuleResponse existingRule = getAlertRule(uid);
+            
+            ObjectNode ruleJson = buildUpdateAlertRuleJson(request, existingRule);
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set(HttpHeaders.AUTHORIZATION, grafanaConfig.getAuthHeader());
+            
+            HttpEntity<String> entity = new HttpEntity<>(ruleJson.toString(), headers);
+            
+            String url = grafanaConfig.getApiUrl() + "/v1/provisioning/alert-rules/" + uid;
+            ResponseEntity<JsonNode> response = restTemplate.exchange(
+                url,
+                HttpMethod.PUT,
+                entity,
+                JsonNode.class
+            );
+            
+            if (response.getBody() != null) {
+                GrafanaAlertRuleResponse ruleResponse = mapToAlertRuleResponse(response.getBody());
+                log.info("Successfully updated Grafana alert rule: {}", ruleResponse.getUid());
+                return ruleResponse;
+            }
+            
+            throw new RuntimeException("Failed to update alert rule");
+            
+        } catch (Exception e) {
+            log.error("Error updating Grafana alert rule: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to update alert rule in Grafana: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Test a Grafana alert rule query
+     */
+    public TestAlertRuleResponse testAlertRule(TestAlertRuleRequest request) {
+        log.info("Testing Grafana alert rule query");
+        
+        try {
+            // Build query payload
+            ObjectNode queryJson = objectMapper.createObjectNode();
+            queryJson.put("datasourceUid", request.getDatasourceUID());
+            queryJson.put("expr", request.getQuery());
+            queryJson.put("from", request.getFrom() != null ? request.getFrom() : "now-1h");
+            queryJson.put("to", request.getTo() != null ? request.getTo() : "now");
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set(HttpHeaders.AUTHORIZATION, grafanaConfig.getAuthHeader());
+            
+            HttpEntity<String> entity = new HttpEntity<>(queryJson.toString(), headers);
+            
+            String url = grafanaConfig.getApiUrl() + "/ds/query";
+            ResponseEntity<JsonNode> response = restTemplate.exchange(
+                url,
+                HttpMethod.POST,
+                entity,
+                JsonNode.class
+            );
+            
+            TestAlertRuleResponse testResponse = TestAlertRuleResponse.builder()
+                .success(true)
+                .build();
+            
+            if (response.getBody() != null) {
+                // Parse query results
+                JsonNode results = response.getBody().get("results");
+                if (results != null && results.size() > 0) {
+                    JsonNode firstResult = results.get(0);
+                    if (firstResult.has("series") && firstResult.get("series").size() > 0) {
+                        JsonNode series = firstResult.get("series").get(0);
+                        if (series.has("points")) {
+                            ArrayNode points = (ArrayNode) series.get("points");
+                            testResponse.setRowCount(points.size());
+                            
+                            // Get sample data (first 10 rows)
+                            List<Map<String, Object>> sampleData = new ArrayList<>();
+                            for (int i = 0; i < Math.min(10, points.size()); i++) {
+                                Map<String, Object> row = new HashMap<>();
+                                ArrayNode point = (ArrayNode) points.get(i);
+                                row.put("value", point.get(0));
+                                row.put("timestamp", point.get(1));
+                                sampleData.add(row);
+                            }
+                            testResponse.setSampleData(sampleData);
+                        }
+                    }
+                }
+                
+                testResponse.setMessage("Query executed successfully");
+            }
+            
+            return testResponse;
+            
+        } catch (Exception e) {
+            log.error("Error testing Grafana alert rule query: {}", e.getMessage(), e);
+            return TestAlertRuleResponse.builder()
+                .success(false)
+                .error(e.getMessage())
+                .build();
+        }
+    }
+    
+    private GrafanaAlertRuleResponse mapToAlertRuleResponse(JsonNode ruleNode) {
+        return GrafanaAlertRuleResponse.builder()
+            .uid(ruleNode.has("uid") ? ruleNode.get("uid").asText() : null)
+            .title(ruleNode.has("title") ? ruleNode.get("title").asText() : null)
+            .folderUID(ruleNode.has("folderUID") ? ruleNode.get("folderUID").asText() : null)
+            .ruleGroup(ruleNode.has("ruleGroup") ? ruleNode.get("ruleGroup").asText() : null)
+            .condition(ruleNode.has("condition") ? ruleNode.get("condition").asText() : null)
+            .for_(ruleNode.has("for") ? ruleNode.get("for").asText() : null)
+            .noDataState(ruleNode.has("noDataState") ? ruleNode.get("noDataState").asInt() : null)
+            .execErrState(ruleNode.has("execErrState") ? ruleNode.get("execErrState").asInt() : null)
+            .isPaused(ruleNode.has("isPaused") ? ruleNode.get("isPaused").asBoolean() : false)
+            .build();
+    }
+    
+    private ObjectNode buildAlertRuleJson(CreateGrafanaAlertRuleRequest request) {
+        ObjectNode ruleJson = objectMapper.createObjectNode();
+        ruleJson.put("title", request.getTitle());
+        ruleJson.put("folderUID", request.getFolderUID());
+        ruleJson.put("ruleGroup", request.getRuleGroup());
+        ruleJson.put("for", request.getFor_() != null ? request.getFor_() : "5m");
+        ruleJson.put("noDataState", request.getNoDataState() != null ? request.getNoDataState() : 0);
+        ruleJson.put("execErrState", request.getExecErrState() != null ? request.getExecErrState() : 0);
+        
+        // Add condition
+        ruleJson.put("condition", request.getCondition() != null ? request.getCondition() : "A");
+        
+        // Add data array with query
+        ArrayNode dataArray = objectMapper.createArrayNode();
+        ObjectNode queryNode = objectMapper.createObjectNode();
+        queryNode.put("refId", "A");
+        queryNode.put("queryType", "");
+        ObjectNode model = objectMapper.createObjectNode();
+        model.put("expr", request.getQuery());
+        model.put("datasource", request.getDatasourceUID());
+        model.put("intervalMs", 1000);
+        model.put("maxDataPoints", 43200);
+        queryNode.set("model", model);
+        dataArray.add(queryNode);
+        ruleJson.set("data", dataArray);
+        
+        // Add annotations
+        if (request.getAnnotations() != null) {
+            ObjectNode annotations = objectMapper.createObjectNode();
+            request.getAnnotations().forEach(annotations::put);
+            ruleJson.set("annotations", annotations);
+        }
+        
+        // Add labels
+        if (request.getLabels() != null) {
+            ObjectNode labels = objectMapper.createObjectNode();
+            request.getLabels().forEach(labels::put);
+            ruleJson.set("labels", labels);
+        }
+        
+        return ruleJson;
+    }
+    
+    private ObjectNode buildUpdateAlertRuleJson(UpdateGrafanaAlertRuleRequest request, GrafanaAlertRuleResponse existingRule) {
+        ObjectNode ruleJson = objectMapper.createObjectNode();
+        
+        ruleJson.put("uid", existingRule.getUid());
+        ruleJson.put("title", request.getTitle() != null ? request.getTitle() : existingRule.getTitle());
+        ruleJson.put("folderUID", request.getFolderUID() != null ? request.getFolderUID() : existingRule.getFolderUID());
+        ruleJson.put("ruleGroup", request.getRuleGroup() != null ? request.getRuleGroup() : existingRule.getRuleGroup());
+        ruleJson.put("for", request.getFor_() != null ? request.getFor_() : existingRule.getFor_());
+        ruleJson.put("noDataState", request.getNoDataState() != null ? request.getNoDataState() : existingRule.getNoDataState());
+        ruleJson.put("execErrState", request.getExecErrState() != null ? request.getExecErrState() : existingRule.getExecErrState());
+        
+        // Handle isPaused
+        if (request.getIsPaused() != null) {
+            ruleJson.put("isPaused", request.getIsPaused());
+        }
+        
+        // Update condition if provided
+        ruleJson.put("condition", request.getCondition() != null ? request.getCondition() : existingRule.getCondition());
+        
+        // Update data array if query is provided
+        if (request.getQuery() != null && request.getDatasourceUID() != null) {
+            ArrayNode dataArray = objectMapper.createArrayNode();
+            ObjectNode queryNode = objectMapper.createObjectNode();
+            queryNode.put("refId", "A");
+            queryNode.put("queryType", "");
+            ObjectNode model = objectMapper.createObjectNode();
+            model.put("expr", request.getQuery());
+            model.put("datasource", request.getDatasourceUID());
+            model.put("intervalMs", 1000);
+            model.put("maxDataPoints", 43200);
+            queryNode.set("model", model);
+            dataArray.add(queryNode);
+            ruleJson.set("data", dataArray);
+        }
+        
+        // Update annotations
+        if (request.getAnnotations() != null) {
+            ObjectNode annotations = objectMapper.createObjectNode();
+            request.getAnnotations().forEach(annotations::put);
+            ruleJson.set("annotations", annotations);
+        }
+        
+        // Update labels
+        if (request.getLabels() != null) {
+            ObjectNode labels = objectMapper.createObjectNode();
+            request.getLabels().forEach(labels::put);
+            ruleJson.set("labels", labels);
+        }
+        
+        return ruleJson;
+    }
     
     public void deleteAlertRule(String uid) {
         log.info("Deleting Grafana alert rule: {}", uid);

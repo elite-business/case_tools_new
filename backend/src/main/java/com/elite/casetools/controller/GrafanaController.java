@@ -115,5 +115,86 @@ public class GrafanaController {
         GrafanaConnectionStatusResponse status = grafanaService.getGrafanaConnectionStatus();
         return ResponseEntity.ok(status);
     }
+
+    /**
+     * Get all Grafana alert rules
+     */
+    @GetMapping("/alert-rules")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST')")
+    @Operation(summary = "Get all Grafana alert rules")
+    public ResponseEntity<List<GrafanaAlertRuleResponse>> getAlertRules() {
+        log.info("Fetching Grafana alert rules");
+        List<GrafanaAlertRuleResponse> rules = grafanaService.getAlertRules();
+        return ResponseEntity.ok(rules);
+    }
+
+    /**
+     * Get a specific Grafana alert rule
+     */
+    @GetMapping("/alert-rules/{uid}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST')")
+    @Operation(summary = "Get a specific Grafana alert rule")
+    public ResponseEntity<GrafanaAlertRuleResponse> getAlertRule(@PathVariable String uid) {
+        log.info("Fetching Grafana alert rule: {}", uid);
+        GrafanaAlertRuleResponse rule = grafanaService.getAlertRule(uid);
+        return ResponseEntity.ok(rule);
+    }
+
+    /**
+     * Create a new Grafana alert rule
+     */
+    @PostMapping("/alert-rules")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(summary = "Create a new Grafana alert rule")
+    public ResponseEntity<GrafanaAlertRuleResponse> createAlertRule(
+            @Valid @RequestBody CreateGrafanaAlertRuleRequest request,
+            Authentication authentication) {
+        log.info("Creating Grafana alert rule by user: {}", authentication.getName());
+        GrafanaAlertRuleResponse rule = grafanaService.createAlertRule(request, authentication.getName());
+        return ResponseEntity.ok(rule);
+    }
+
+    /**
+     * Update an existing Grafana alert rule
+     */
+    @PutMapping("/alert-rules/{uid}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(summary = "Update an existing Grafana alert rule")
+    public ResponseEntity<GrafanaAlertRuleResponse> updateAlertRule(
+            @PathVariable String uid,
+            @Valid @RequestBody UpdateGrafanaAlertRuleRequest request,
+            Authentication authentication) {
+        log.info("Updating Grafana alert rule {} by user: {}", uid, authentication.getName());
+        GrafanaAlertRuleResponse rule = grafanaService.updateAlertRule(uid, request, authentication.getName());
+        return ResponseEntity.ok(rule);
+    }
+
+    /**
+     * Delete a Grafana alert rule
+     */
+    @DeleteMapping("/alert-rules/{uid}")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Delete a Grafana alert rule")
+    public ResponseEntity<Void> deleteAlertRule(
+            @PathVariable String uid,
+            Authentication authentication) {
+        log.info("Deleting Grafana alert rule {} by user: {}", uid, authentication.getName());
+        grafanaService.deleteAlertRule(uid);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Test a Grafana alert rule query
+     */
+    @PostMapping("/alert-rules/test")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(summary = "Test a Grafana alert rule query")
+    public ResponseEntity<TestAlertRuleResponse> testAlertRule(
+            @Valid @RequestBody TestAlertRuleRequest request,
+            Authentication authentication) {
+        log.info("Testing Grafana alert rule query by user: {}", authentication.getName());
+        TestAlertRuleResponse result = grafanaService.testAlertRule(request);
+        return ResponseEntity.ok(result);
+    }
     
 }
