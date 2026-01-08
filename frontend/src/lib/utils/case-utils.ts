@@ -119,8 +119,9 @@ export function getSlaStatus(slaDeadline?: string, slaBreached?: boolean): {
   color: string;
   label: string;
 } {
-  if (slaBreached) {
-    return { status: 'breached', color: '#ff4d4f', label: 'SLA Breached' };
+  // If explicitly marked as breached
+  if (slaBreached === true) {
+    return { status: 'breached', color: '#ff4d4f', label: 'SLA BREACHED' };
   }
 
   if (!slaDeadline) {
@@ -131,12 +132,28 @@ export function getSlaStatus(slaDeadline?: string, slaBreached?: boolean): {
   const deadline = new Date(slaDeadline);
   const hoursUntilDeadline = (deadline.getTime() - now.getTime()) / (1000 * 60 * 60);
 
+  // Past deadline is breached
   if (hoursUntilDeadline < 0) {
-    return { status: 'breached', color: '#ff4d4f', label: 'SLA Breached' };
-  } else if (hoursUntilDeadline < 4) {
-    return { status: 'at-risk', color: '#ffa940', label: 'SLA At Risk' };
-  } else {
-    return { status: 'on-track', color: '#52c41a', label: 'SLA On Track' };
+    const hoursOverdue = Math.abs(hoursUntilDeadline);
+    if (hoursOverdue < 24) {
+      return { status: 'breached', color: '#ff4d4f', label: `${Math.floor(hoursOverdue)}h OVERDUE` };
+    } else {
+      const daysOverdue = Math.floor(hoursOverdue / 24);
+      return { status: 'breached', color: '#ff4d4f', label: `${daysOverdue}d OVERDUE` };
+    }
+  } 
+  // Less than 4 hours is at risk
+  else if (hoursUntilDeadline < 4) {
+    return { status: 'at-risk', color: '#ffa940', label: `${Math.floor(hoursUntilDeadline)}h WARNING` };
+  } 
+  // Less than 24 hours shows hours
+  else if (hoursUntilDeadline < 24) {
+    return { status: 'on-track', color: '#52c41a', label: `${Math.floor(hoursUntilDeadline)}h remaining` };
+  }
+  // More than 24 hours shows days
+  else {
+    const daysRemaining = Math.floor(hoursUntilDeadline / 24);
+    return { status: 'on-track', color: '#52c41a', label: `${daysRemaining}d remaining` };
   }
 }
 
@@ -174,4 +191,74 @@ export function getCategoryLabel(category: string): string {
     'OTHER': 'Other'
   };
   return categoryMap[category] || category;
+}
+
+/**
+ * Calculate SLA compliance percentage
+ */
+export function calculateSlaCompliance(cases: any[]): number {
+  if (cases.length === 0) return 100;
+  
+  const breachedCount = cases.filter(c => 
+    c.slaBreached === true || getSlaStatus(c.slaDeadline, c.slaBreached).status === 'breached'
+  ).length;
+  const complianceRate = ((cases.length - breachedCount) / cases.length) * 100;
+  
+  return Math.round(complianceRate);
+}
+
+/**
+ * Get SLA deadline based on priority (in hours)
+ */
+export function getSlaDeadlineHours(priority: CasePriority): number {
+  switch (priority) {
+    case 1: // Urgent
+      return 4;
+    case 2: // High
+      return 8;
+    case 3: // Medium
+      return 24;
+    case 4: // Low
+      return 72;
+    default:
+      return 24;
+  }
+}
+
+/**
+ * Calculate initial SLA deadline from creation time
+ */
+export function calculateSlaDeadline(createdAt: string, priority: CasePriority): string {
+  const creationDate = new Date(createdAt);
+  const deadlineHours = getSlaDeadlineHours(priority);
+  const deadline = new Date(creationDate.getTime() + deadlineHours * 60 * 60 * 1000);
+  
+  return deadline.toISOString();
+}
+
+/**
+ * Group cases by user or team
+ */
+export function groupCases(cases: any[], groupBy: 'user' | 'team'): Map<string, any[]> {
+  const grouped = new Map<string, any[]>();
+  
+  cases.forEach(caseItem => {
+    if (groupBy === 'user') {
+      const assignedUser = caseItem.assignedUsers?.[0];
+      const key = assignedUser ? assignedUser.name : 'Unassigned';
+      if (!grouped.has(key)) {
+        grouped.set(key, []);
+      }
+      grouped.get(key)?.push(caseItem);
+    } else if (groupBy === 'team') {
+      const assignedTeam = caseItem.assignedTeams?.[0];
+      const key = assignedTeam ? assignedTeam.name : 'No Team';
+      if (!grouped.has(key)) {
+        grouped.set(key, []);
+      }
+      grouped.get(key)?.push(caseItem);
+    }
+  });
+  
+  return grouped;
 }

@@ -37,12 +37,12 @@ import {
   ClearOutlined,
 } from '@ant-design/icons';
 import { useRouter, usePathname } from 'next/navigation';
-import { useTheme } from 'next-themes';
 import ThemeSwitcher from '@/components/common/ThemeSwitcher';
 import type { MenuProps } from 'antd';
 import { useAuthStore } from '@/store/auth-store';
 import { useWebSocketContext } from '@/components/providers/WebSocketProvider';
 import { useTheme as useCustomTheme } from '@/contexts/theme-context';
+import { canShowAdminFeatures, canShowManagerFeatures } from '@/lib/rbac';
 import dayjs from 'dayjs';
 
 const { Header, Sider, Content } = Layout;
@@ -96,9 +96,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
   // Check user role - support both role string and roles array
   const userRole = user?.role || (user?.roles && user.roles[0]) || 'VIEWER';
-  const isAdmin = userRole === 'ADMIN' || userRole === 'ROLE_ADMIN';
-  const isManager = userRole === 'MANAGER' || userRole === 'ROLE_MANAGER';
-  const isAnalyst = userRole === 'ANALYST' || userRole === 'ROLE_ANALYST';
+  const showAdminFeatures = canShowAdminFeatures(userRole);
+  const showManagerFeatures = canShowManagerFeatures(userRole);
 
   // Build menu items based on user role
   const buildMenuItems = (): MenuProps['items'] => {
@@ -121,7 +120,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
             onClick: () => router.push('/cases/my-cases'),
           },
           // All Cases - only for admins and managers
-          ...(isAdmin || isManager ? [{
+          ...(showManagerFeatures ? [{
             key: '/cases',
             label: 'All Cases',
             onClick: () => router.push('/cases'),
@@ -136,8 +135,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
             label: 'Resolved Cases',
             onClick: () => router.push('/cases/resolved'),
           },
-          // Create New Case - only for admins, managers, and analysts
-          ...(isAdmin || isManager || isAnalyst ? [{
+          // Create New Case - only for admins and managers
+          ...(showManagerFeatures ? [{
             key: '/cases/new',
             label: 'Create New Case',
             onClick: () => router.push('/cases/new'),
@@ -154,18 +153,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
             label: 'Alert History',
             onClick: () => router.push('/alerts/history'),
           },
-          // Alert Rules - visible to all but with different permissions
-          {
+          // Alert Rules - visible to admins and managers only
+          ...(showManagerFeatures ? [{
             key: '/alerts/rules',
             label: 'Alert Rules',
             onClick: () => router.push('/alerts/rules'),
-          },
-          // Rule Builder - ONLY for admins
-          ...(isAdmin ? [{
-            key: '/alerts/builder',
-            label: 'Rule Builder',
-            onClick: () => router.push('/alerts/builder'),
           }] : []),
+          // Rule Builder removed entirely from navigation
         ],
       },
       {
@@ -178,7 +172,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
             label: 'Overview',
             onClick: () => router.push('/analytics/overview'),
           },
-          ...(isAdmin || isManager ? [
+          ...(showManagerFeatures ? [
             {
               key: '/analytics/trends',
               label: 'Trends',
@@ -195,7 +189,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
     ];
 
     // Administration menu - ONLY for admins
-    if (isAdmin) {
+    if (showAdminFeatures) {
       items.push({
         key: 'admin-menu',
         icon: <SettingOutlined />,
@@ -206,11 +200,12 @@ export default function AppLayout({ children }: AppLayoutProps) {
             label: 'Users',
             onClick: () => router.push('/admin/users'),
           },
-          {
+          // Teams - visible to admins and managers
+          ...(showManagerFeatures ? [{
             key: '/admin/teams',
             label: 'Teams',
             onClick: () => router.push('/admin/teams'),
-          },
+          }] : []),
           {
             key: '/admin/system',
             label: 'System Settings',

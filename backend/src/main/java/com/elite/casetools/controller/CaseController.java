@@ -40,7 +40,7 @@ public class CaseController {
      * Get all cases with pagination and filtering
      */
     @GetMapping
-    @PreAuthorize("hasAnyRole('USER', 'ADMIN', 'MANAGER', 'ANALYST')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST', 'VIEWER')")
     @Operation(summary = "Get all cases with pagination and filtering")
     public ResponseEntity<Page<CaseResponse>> getAllCases(
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
@@ -67,7 +67,7 @@ public class CaseController {
      * Get case by ID
      */
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('USER', 'ADMIN', 'MANAGER', 'ANALYST')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST', 'VIEWER')")
     @Operation(summary = "Get case by ID")
     public ResponseEntity<CaseResponse> getCaseById(@PathVariable Long id) {
         Case caseEntity = caseService.getCaseById(id);
@@ -78,7 +78,7 @@ public class CaseController {
      * Create new case
      */
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Operation(summary = "Create new case")
     public ResponseEntity<CaseResponse> createCase(
             @Valid @RequestBody CreateCaseRequest request,
@@ -93,7 +93,7 @@ public class CaseController {
      * Update case
      */
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Operation(summary = "Update case")
     public ResponseEntity<CaseResponse> updateCase(
             @PathVariable Long id,
@@ -125,7 +125,7 @@ public class CaseController {
      * Add comment to case
      */
     @PostMapping("/{id}/comments")
-    @PreAuthorize("hasAnyRole('USER', 'ADMIN', 'MANAGER', 'ANALYST')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST')")
     @Operation(summary = "Add comment to case")
     public ResponseEntity<CaseCommentResponse> addComment(
             @PathVariable Long id,
@@ -141,7 +141,7 @@ public class CaseController {
      * Get case comments
      */
     @GetMapping("/{id}/comments")
-    @PreAuthorize("hasAnyRole('USER', 'ADMIN', 'MANAGER', 'ANALYST','VIEWER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST', 'VIEWER')")
     @Operation(summary = "Get case comments")
     public ResponseEntity<List<CaseCommentResponse>> getCaseComments(@PathVariable Long id) {
         Case caseEntity = caseService.getCaseById(id);
@@ -155,7 +155,7 @@ public class CaseController {
      * Get case activities
      */
     @GetMapping("/{id}/activities")
-    @PreAuthorize("hasAnyRole('USER', 'ADMIN', 'MANAGER', 'ANALYST')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST', 'VIEWER')")
     @Operation(summary = "Get case activities")
     public ResponseEntity<List<CaseActivityResponse>> getCaseActivities(@PathVariable Long id) {
         Case caseEntity = caseService.getCaseById(id);
@@ -169,7 +169,7 @@ public class CaseController {
      * Close case
      */
     @PostMapping("/{id}/close")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Operation(summary = "Close case")
     public ResponseEntity<CaseResponse> closeCase(
             @PathVariable Long id,
@@ -185,7 +185,7 @@ public class CaseController {
      * Get case statistics
      */
     @GetMapping("/stats")
-    @PreAuthorize("hasAnyRole('USER', 'ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'VIEWER')")
     @Operation(summary = "Get case statistics")
     public ResponseEntity<CaseStatsResponse> getCaseStats(
             @RequestParam(required = false) String period) {
@@ -215,7 +215,7 @@ public class CaseController {
      * Get my assigned cases
      */
     @GetMapping("/my-cases")
-    @PreAuthorize("hasAnyRole('USER', 'ADMIN', 'MANAGER', 'ANALYST')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST')")
     @Operation(summary = "Get current user's assigned cases")
     public ResponseEntity<Page<CaseResponse>> getMyCases(
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,

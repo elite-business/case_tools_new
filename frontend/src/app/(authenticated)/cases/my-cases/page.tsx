@@ -22,7 +22,10 @@ import {
   Statistic,
   Typography,
   Progress,
-  Empty
+  Empty,
+  Modal,
+  Select,
+  Alert
 } from 'antd';
 import {
   EyeOutlined,
@@ -31,12 +34,16 @@ import {
   FireOutlined,
   ExclamationCircleOutlined,
   ReloadOutlined,
-  SolutionOutlined
+  SolutionOutlined,
+  UserAddOutlined,
+  UserOutlined
 } from '@ant-design/icons';
-import { casesApi, handleApiError } from '@/lib/api-client';
+import { casesApi, usersApi, apiClient, handleApiError } from '@/lib/api-client';
 import { Case, CaseStatus } from '@/lib/types';
 import { getPriorityLabel, getPriorityColor, getSeverityColor, getStatusColor, getSlaStatus, getCategoryLabel } from '@/lib/utils/case-utils';
 import { useAuthStore } from '@/store/auth-store';
+import { Permission } from '@/lib/rbac';
+import { RoleGuard, useRolePermissions } from '@/components/auth/RoleGuard';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 
@@ -48,19 +55,49 @@ export default function MyCasesPage() {
   const router = useRouter();
   const actionRef = useRef<ActionType>();
   const { user } = useAuthStore();
+  const { hasPermission } = useRolePermissions();
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [assignModalVisible, setAssignModalVisible] = useState(false);
+  const [selectedCase, setSelectedCase] = useState<Case | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<number>();
+  
+  // Check reassignment permission based on user's reAssignedTo field
+  // In the user entity, this is stored as reAssignedTo boolean field
+  const canReassign = (user as any)?.reAssignedTo === true || (user as any)?.re_assigned_to === true;
+
+  // Fetch user teams for filtering
+  const { data: userTeams } = useQuery({
+    queryKey: ['users', 'teams', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      try {
+        const response = await apiClient.get(`/users/${user.id}/teams`);
+        return response.data;
+      } catch (error) {
+        return [];
+      }
+    },
+    enabled: !!user?.id,
+  });
 
   // Get my cases statistics
   const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ['cases', 'my-stats', user?.id],
+    queryKey: ['cases', 'my-stats', user?.id, userTeams],
     queryFn: async () => {
       if (!user?.id) return null;
       
-      const response = await casesApi.getAll({ 
+      const queryParams: any = {
         assignedToId: user.id,
         page: 0,
-        size: 100 // Get more for statistics
-      });
+        size: 100
+      };
+      
+      // Include team cases
+      if (userTeams && userTeams.length > 0) {
+        queryParams.assignedTeamIds = userTeams.join(',');
+      }
+      
+      const response = await casesApi.getAll(queryParams);
       
       const cases = response.data.content || [];
       const activeCases = cases.filter((c: Case) => 
@@ -270,11 +307,12 @@ export default function MyCasesPage() {
     {
       title: 'Actions',
       key: 'actions',
-      width: 180,
+      width: 200,
       fixed: 'right',
       render: (_, record: Case) => {
         const canResolve = record.status === 'IN_PROGRESS';
         const canStart = record.status === 'ASSIGNED' || record.status === 'OPEN';
+        const isClosedOrCancelled = record.status === 'CLOSED' || record.status === 'CANCELLED';
         
         return (
           <Space>
@@ -309,6 +347,20 @@ export default function MyCasesPage() {
                 </Button>
               </Tooltip>
             )}
+            {canReassign && !isClosedOrCancelled && (
+              <Tooltip title="Reassign Case">
+                <Button 
+                  size="small" 
+                  icon={<UserAddOutlined />}
+                  onClick={() => {
+                    setSelectedCase(record);
+                    setAssignModalVisible(true);
+                  }}
+                >
+                  Reassign
+                </Button>
+              </Tooltip>
+            )}
           </Space>
         );
       },
@@ -324,6 +376,28 @@ export default function MyCasesPage() {
       </PageContainer>
     );
   }
+
+  // Fetch available users for reassignment
+  const { data: availableUsers } = useQuery({
+    queryKey: ['users', 'available-for-assignment'],
+    queryFn: () => usersApi.getAvailableForAssignment(),
+    enabled: canReassign,
+  });
+
+  const handleReassign = async () => {
+    if (!selectedCase || !selectedUserId) return;
+
+    try {
+      await casesApi.assign(selectedCase.id, selectedUserId);
+      message.success('Case reassigned successfully');
+      setAssignModalVisible(false);
+      setSelectedCase(null);
+      setSelectedUserId(undefined);
+      actionRef.current?.reload();
+    } catch (error) {
+      message.error(handleApiError(error));
+    }
+  };
 
   return (
     <PageContainer
@@ -438,8 +512,13 @@ export default function MyCasesPage() {
             const queryParams: any = {
               page: params.current ? params.current - 1 : 0,
               size: params.pageSize || 20,
-              assignedToId: user.id, // Only show cases assigned to current user
+              assignedToId: user.id, // Show cases assigned to current user
             };
+            
+            // Include team cases
+            if (userTeams && userTeams.length > 0) {
+              queryParams.assignedTeamIds = userTeams.join(',');
+            }
 
             // Handle search
             if (params.keyword) {
@@ -526,6 +605,66 @@ export default function MyCasesPage() {
           );
         }}
       />
+
+      {/* Reassignment Modal */}
+      <Modal
+        title="Reassign Case"
+        open={assignModalVisible}
+        onOk={handleReassign}
+        onCancel={() => {
+          setAssignModalVisible(false);
+          setSelectedCase(null);
+          setSelectedUserId(undefined);
+        }}
+        okButtonProps={{ disabled: !selectedUserId }}
+      >
+        <Space direction="vertical" style={{ width: '100%' }} size="large">
+          <div>
+            <Text strong>Case: </Text>
+            <Text>{selectedCase?.caseNumber} - {selectedCase?.title}</Text>
+          </div>
+          
+          <div>
+            <Text strong>Current Assignment: </Text>
+            {selectedCase?.assignedUsers?.length > 0 ? (
+              <Text>{selectedCase.assignedUsers[0].name}</Text>
+            ) : (
+              <Text type="secondary">Unassigned</Text>
+            )}
+          </div>
+
+          <Select
+            style={{ width: '100%' }}
+            placeholder="Select user to reassign to"
+            value={selectedUserId}
+            onChange={setSelectedUserId}
+            showSearch
+            filterOption={(input, option) =>
+              (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+            }
+          >
+            {availableUsers?.data?.map((user: any) => (
+              <Select.Option key={user.id} value={user.id} label={user.fullName || user.name}>
+                <Space>
+                  <UserOutlined />
+                  {user.fullName || user.name}
+                  {user.department && <Tag>{user.department}</Tag>}
+                </Space>
+              </Select.Option>
+            ))}
+          </Select>
+
+          {canReassign && (
+            <Alert
+              message="Reassignment Permission"
+              description="You have permission to reassign cases based on your reAssignedTo setting."
+              type="info"
+              showIcon
+              icon={<UserAddOutlined />}
+            />
+          )}
+        </Space>
+      </Modal>
     </PageContainer>
   );
 }

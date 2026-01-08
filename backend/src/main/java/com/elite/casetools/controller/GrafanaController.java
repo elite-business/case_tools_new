@@ -120,7 +120,7 @@ public class GrafanaController {
      * Get all Grafana alert rules
      */
     @GetMapping("/alert-rules")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Operation(summary = "Get all Grafana alert rules")
     public ResponseEntity<List<GrafanaAlertRuleResponse>> getAlertRules() {
         log.info("Fetching Grafana alert rules");
@@ -132,7 +132,7 @@ public class GrafanaController {
      * Get a specific Grafana alert rule
      */
     @GetMapping("/alert-rules/{uid}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Operation(summary = "Get a specific Grafana alert rule")
     public ResponseEntity<GrafanaAlertRuleResponse> getAlertRule(@PathVariable String uid) {
         log.info("Fetching Grafana alert rule: {}", uid);

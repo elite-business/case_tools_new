@@ -1,6 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { UserRole, Permission } from '@/lib/rbac';
+import { AdminOnly, useRolePermissions } from '@/components/auth/RoleGuard';
 import { 
   Table, 
   Button, 
@@ -58,9 +61,26 @@ interface UpdateUserRequest {
 const { Option } = Select;
 
 export default function UsersPage() {
+  const router = useRouter();
+  const { hasPermission } = useRolePermissions();
+  
+  // Check permissions
+  const permissions = {
+    create: hasPermission(Permission.CREATE_USERS),
+    edit: hasPermission(Permission.EDIT_USERS),
+    delete: hasPermission(Permission.DELETE_USERS),
+    view: hasPermission(Permission.VIEW_USERS),
+  };
+  
   const [form] = Form.useForm();
   const [resetPasswordForm] = Form.useForm();
   const queryClient = useQueryClient();
+  
+  // Redirect if no view permission
+  if (!permissions.view) {
+    router.push('/unauthorized');
+    return null;
+  }
   
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);

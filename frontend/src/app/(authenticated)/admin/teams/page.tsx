@@ -1,6 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Permission } from '@/lib/rbac';
+import { RoleGuard, useRolePermissions } from '@/components/auth/RoleGuard';
 import { 
   Table, 
   Button, 
@@ -42,9 +45,27 @@ import type { Team, User, CreateTeamRequest, UpdateTeamRequest, TeamMemberReques
 const { Option } = Select;
 
 export default function TeamsPage() {
+  const router = useRouter();
+  const { hasPermission } = useRolePermissions();
+  
+  // Check permissions
+  const permissions = {
+    view: hasPermission(Permission.VIEW_TEAMS),
+    create: hasPermission(Permission.CREATE_TEAMS),
+    edit: hasPermission(Permission.EDIT_TEAMS),
+    delete: hasPermission(Permission.DELETE_TEAMS),
+    manageMembers: hasPermission(Permission.MANAGE_TEAM_MEMBERS),
+  };
+  
   const [form] = Form.useForm();
   const [memberForm] = Form.useForm();
   const queryClient = useQueryClient();
+  
+  // Redirect if no view permission
+  if (!permissions.view) {
+    router.push('/unauthorized');
+    return null;
+  }
   
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);

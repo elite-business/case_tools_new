@@ -35,7 +35,7 @@ public class AlertController {
      * Get alert history with pagination and filtering
      */
     @GetMapping("/history")
-    @PreAuthorize("hasAnyRole('USER', 'ADMIN', 'MANAGER', 'ANALYST')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST', 'VIEWER')")
     @Operation(summary = "Get alert history with pagination and filtering")
     public ResponseEntity<Page<AlertHistoryResponse>> getAlertHistory(
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
@@ -65,7 +65,7 @@ public class AlertController {
      * Acknowledge alert
      */
     @PostMapping("/{id}/acknowledge")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Operation(summary = "Acknowledge alert")
     public ResponseEntity<AlertHistoryResponse> acknowledgeAlert(
             @PathVariable Long id,
@@ -81,7 +81,7 @@ public class AlertController {
      * Resolve alert
      */
     @PostMapping("/{id}/resolve")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Operation(summary = "Resolve alert")
     public ResponseEntity<AlertHistoryResponse> resolveAlert(
             @PathVariable Long id,
@@ -113,7 +113,7 @@ public class AlertController {
      * Export alert history
      */
     @GetMapping("/history/export")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Operation(summary = "Export alert history")
     public ResponseEntity<byte[]> exportAlertHistory(
             @RequestParam(defaultValue = "csv") String format,

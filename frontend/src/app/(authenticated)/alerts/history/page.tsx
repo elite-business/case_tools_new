@@ -47,6 +47,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { alertsApi, handleApiError } from '@/lib/api-client';
 import { AlertHistory, AlertFilters, AlertSeverity, AlertStatus } from '@/lib/types';
 import { useAuthStore } from '@/store/auth-store';
+import { isManagerOrHigher, canManageAlerts } from '@/lib/rbac';
 import dayjs from 'dayjs';
 
 const { RangePicker } = DatePicker;
@@ -81,13 +82,12 @@ export default function AlertHistoryPage() {
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
   const queryClient = useQueryClient();
 
-  // Get user role
+  // Get user role and permissions
   const { user } = useAuthStore();
   const userRole = user?.role || (user?.roles && user.roles[0]) || 'VIEWER';
-  const isAdmin = userRole === 'ADMIN' || userRole === 'ROLE_ADMIN';
-  const isManager = userRole === 'MANAGER' || userRole === 'ROLE_MANAGER';
-  const canAcknowledgeAlert = isAdmin || isManager;
-  const canResolveAlert = isAdmin || isManager;
+  const canAcknowledgeAlert = canManageAlerts(userRole);
+  const canResolveAlert = canManageAlerts(userRole);
+  const canViewAllAlerts = isManagerOrHigher(userRole);
 
   // Fetch alert history with role-based filtering
   const {
@@ -99,7 +99,7 @@ export default function AlertHistoryPage() {
     queryFn: () => {
       // For non-admin/non-manager users, filter to only show their assigned alerts
       const queryFilters = { ...filters };
-      if (!isAdmin && !isManager && user?.id) {
+      if (!canViewAllAlerts && user?.id) {
         queryFilters.assignedToId = user.id;
       }
       return alertsApi.getHistory(queryFilters);
@@ -278,15 +278,17 @@ export default function AlertHistoryPage() {
               style={{ color: '#faad14' }}
             />
           )}
-          {canResolveAlert && ['OPEN', 'ACKNOWLEDGED'].includes(record.status) && (
-            <Button
-              type="text"
-              icon={<CloseOutlined />}
-              onClick={() => resolveMutation.mutate(record.id)}
-              title="Resolve"
-              style={{ color: '#52c41a' }}
-            />
-          )}
+          <RoleGuard permissions={Permission.RESOLVE_ALERTS}>
+            {['OPEN', 'ACKNOWLEDGED'].includes(record.status) && (
+              <Button
+                type="text"
+                icon={<CloseOutlined />}
+                onClick={() => resolveMutation.mutate(record.id)}
+                title="Resolve"
+                style={{ color: '#52c41a' }}
+              />
+            )}
+          </RoleGuard>
         </Space>
       ),
     },

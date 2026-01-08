@@ -61,9 +61,7 @@ public class WebhookController {
         try {
             // Parse the JSON payload
             GrafanaWebhookRequest request = objectMapper.readValue(rawPayload, GrafanaWebhookRequest.class);
-            
-            // Use the improved webhook service which handles both alert history and case creation
-            // Alert history is created inside processWebhookWithRuleAssignments for each alert
+
             List<Case> processedCases = improvedWebhookService.processWebhookWithRuleAssignments(request);
             
             return ResponseEntity.ok(WebhookResponse.success(

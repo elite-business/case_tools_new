@@ -11,10 +11,10 @@ export interface User {
   firstName?: string;
   lastName?: string;
   roles: string[];
+  role: string; // Single role from backend
   active: boolean;
   createdAt: string;
   lastLogin?: string;
-  role?:any
 }
 
 interface AuthState {
@@ -50,6 +50,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         firstName: user.name?.split(' ')[0],
         lastName: user.name?.split(' ').slice(1).join(' '),
         roles: user.role ? [user.role] : [], // Convert single role to array
+        role: user.role || 'VIEWER', // Store single role
         active: user.active,
         createdAt: new Date().toISOString(),
         lastLogin: new Date().toISOString()
@@ -112,6 +113,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         firstName: user.name?.split(' ')[0],
         lastName: user.name?.split(' ').slice(1).join(' '),
         roles: user.role ? [user.role] : user.roles || [],
+        role: user.role || 'VIEWER', // Store single role
         active: user.active,
         createdAt: user.createdAt || new Date().toISOString(),
         lastLogin: new Date().toISOString()
@@ -146,6 +148,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         firstName: user.name?.split(' ')[0],
         lastName: user.name?.split(' ').slice(1).join(' '),
         roles: user.role ? [user.role] : user.roles || [],
+        role: user.role || 'VIEWER', // Store single role
         active: user.active !== undefined ? user.active : true,
         createdAt: user.createdAt || new Date().toISOString(),
         lastLogin: user.lastLogin || new Date().toISOString()
@@ -174,6 +177,7 @@ export const useAuthStore = create<AuthState>((set) => ({
               firstName: user.name?.split(' ')[0],
               lastName: user.name?.split(' ').slice(1).join(' '),
               roles: user.role ? [user.role] : user.roles || [],
+              role: user.role || 'VIEWER', // Store single role
               active: user.active !== undefined ? user.active : true,
               createdAt: user.createdAt || new Date().toISOString(),
               lastLogin: new Date().toISOString()

@@ -141,7 +141,7 @@ public class UserController {
      * Get users available for case assignment
      */
     @GetMapping("/available-for-assignment")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'SENIOR_ANALYST')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<List<UserDto>> getAvailableForAssignment() {
         List<User> users = userService.getAvailableForAssignment();
         List<UserDto> userDtos = users.stream()

@@ -53,6 +53,8 @@ import StatusIndicator from '@/components/ui-system/StatusIndicator';
 import ActionDropdown, { CommonActions } from '@/components/ui-system/ActionDropdown';
 import MetricsCard from '@/components/ui-system/MetricsCard';
 import { useAuthStore } from '@/store/auth-store';
+import { Permission } from '@/lib/rbac';
+import { RoleGuard, useRolePermissions } from '@/components/auth/RoleGuard';
 import dayjs from 'dayjs';
 
 const { confirm } = Modal;
@@ -68,16 +70,20 @@ export default function CasesPage() {
   const [filters, setFilters] = useState<CaseFilters>({});
   const [showFilters, setShowFilters] = useState(false);
 
-  // Get user role
+  // Get user role and permissions using RBAC hook
   const { user } = useAuthStore();
-  const userRole = user?.role || (user?.roles && user.roles[0]) || 'VIEWER';
-  const isAdmin = userRole === 'ADMIN' || userRole === 'ROLE_ADMIN';
-  const isManager = userRole === 'MANAGER' || userRole === 'ROLE_MANAGER';
-  const isAnalyst = userRole === 'ANALYST' || userRole === 'ROLE_ANALYST';
-  const canCreateCase = isAdmin || isManager || isAnalyst;
-  const canEditCase = isAdmin || isManager;
-  const canDeleteCase = isAdmin;
-  const canAssignCase = isAdmin || isManager;
+  const { userRole, hasPermission: checkPermission } = useRolePermissions();
+  
+  // Define permissions for different actions
+  const permissions = {
+    create: checkPermission(Permission.CREATE_CASES),
+    edit: checkPermission(Permission.EDIT_CASES),
+    delete: checkPermission(Permission.DELETE_CASES),
+    assign: checkPermission(Permission.ASSIGN_CASES),
+    close: checkPermission(Permission.CLOSE_CASES),
+    viewAll: checkPermission(Permission.VIEW_CASES),
+    export: checkPermission(Permission.EXPORT_DATA),
+  };
 
   // Fetch available users for assignment
   const { data: users } = useQuery({
@@ -410,7 +416,7 @@ export default function CasesPage() {
         ];
 
         // Add edit action if user has permission
-        if (canEditCase) {
+        if (permissions.edit) {
           actions.push({
             ...CommonActions.edit,
             onClick: () => router.push(`/cases/${record.id}?mode=edit`),
@@ -419,7 +425,7 @@ export default function CasesPage() {
         }
 
         // Add assign action if user has permission
-        if (canAssignCase) {
+        if (permissions.assign) {
           actions.push({
             ...CommonActions.assign,
             disabled: isClosedOrCancelled,
@@ -430,8 +436,8 @@ export default function CasesPage() {
           });
         }
 
-        // Add close action if user has edit permission
-        if (canEditCase) {
+        // Add close action if user has permission
+        if (permissions.close) {
           actions.push(
             {
               ...CommonActions.divider,
@@ -557,16 +563,16 @@ export default function CasesPage() {
               message={
                 <Space>
                   <Text strong>{selectedRowKeys.length} cases selected</Text>
-                  {canAssignCase && (
+                  <RoleGuard permissions={Permission.ASSIGN_CASES}>
                     <Button size="small" icon={<UserAddOutlined />} onClick={() => handleBulkAction('assign')}>
                       Bulk Assign
                     </Button>
-                  )}
-                  {canEditCase && (
+                  </RoleGuard>
+                  <RoleGuard permissions={Permission.CLOSE_CASES}>
                     <Button size="small" icon={<CheckCircleOutlined />} onClick={() => handleBulkAction('close')}>
                       Bulk Close
                     </Button>
-                  )}
+                  </RoleGuard>
                   <Button size="small" icon={<ExportOutlined />} onClick={() => handleBulkAction('export')}>
                     Export
                   </Button>
@@ -617,7 +623,7 @@ export default function CasesPage() {
           >
             Export {selectedRowKeys.length > 0 ? `(${selectedRowKeys.length})` : ''}
           </Button>,
-          ...(canCreateCase ? [
+          <RoleGuard key="create-guard" permissions={Permission.CREATE_CASES}>
             <Button 
               key="create" 
               type="primary" 
@@ -626,7 +632,7 @@ export default function CasesPage() {
             >
               New Case
             </Button>
-          ] : []),
+          </RoleGuard>,
         ]}
       >
         <motion.div
@@ -645,8 +651,8 @@ export default function CasesPage() {
                   search: params.title || filters.search || '',
                 };
 
-                // For non-admin/non-manager users, filter to only show their assigned cases
-                if (!isAdmin && !isManager && user?.id) {
+                // Filter cases based on permissions - if user can't view all, show only their cases
+                if (!permissions.viewAll && user?.id) {
                   queryParams.assignedToId = user.id;
                   // Also include cases assigned to user's teams
                   queryParams.includeTeamCases = true;

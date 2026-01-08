@@ -90,6 +90,11 @@ public class User extends BaseEntity implements UserDetails {
     @Column(name = "re_assigned_to")
     @Builder.Default
     private Boolean reAssignedTo = false;
+    
+    // Getter with alias for frontend compatibility
+    public Boolean getReAssignedTo() {
+        return reAssignedTo != null ? reAssignedTo : false;
+    }
 
     @Column(name = "closed")
     @Builder.Default
