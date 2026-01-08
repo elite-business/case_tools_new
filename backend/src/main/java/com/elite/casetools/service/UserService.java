@@ -2,9 +2,11 @@ package com.elite.casetools.service;
 
 import com.elite.casetools.dto.*;
 import com.elite.casetools.entity.User;
+import com.elite.casetools.entity.Team;
 import com.elite.casetools.exception.ResourceNotFoundException;
 import com.elite.casetools.exception.DuplicateResourceException;
 import com.elite.casetools.repository.UserRepository;
+import com.elite.casetools.repository.TeamRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -17,8 +19,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
  * Service for user management operations
@@ -31,6 +37,7 @@ public class UserService implements UserDetailsService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final TeamRepository teamRepository;
 
     /**
      * Load user by username for Spring Security
@@ -305,5 +312,37 @@ public class UserService implements UserDetailsService {
     private String getCurrentUsername() {
         // This will be implemented with SecurityContext
         return "system";
+    }
+    
+    /**
+     * Get current user ID from security context
+     */
+    public Long getCurrentUserId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof User) {
+            User user = (User) auth.getPrincipal();
+            return user.getId();
+        }
+        throw new ResourceNotFoundException("Current user not found");
+    }
+    
+    /**
+     * Get team IDs for a specific user
+     * Returns list of team IDs the user belongs to
+     */
+    @Transactional(readOnly = true)
+    public List<Long> getUserTeamIds(Long userId) {
+        User user = getUserById(userId);
+        
+        // Query teams where user is a member
+        List<Team> userTeams = teamRepository.findByMembersContaining(user);
+        
+        if (!userTeams.isEmpty()) {
+            return userTeams.stream()
+                    .map(Team::getId)
+                    .collect(Collectors.toList());
+        }
+        
+        return new ArrayList<>();
     }
 }

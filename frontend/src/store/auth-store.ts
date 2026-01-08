@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import Cookies from 'js-cookie';
 import { apiClient } from '@/lib/api-client';
+import wsService from '@/lib/websocket-stomp';
+import { queryClient } from '@/app/providers';
 
 export interface User {
   id: number;
@@ -12,6 +14,7 @@ export interface User {
   active: boolean;
   createdAt: string;
   lastLogin?: string;
+  role?:any
 }
 
 interface AuthState {
@@ -70,9 +73,24 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: () => {
+    // Clear cookies
     Cookies.remove('token');
     Cookies.remove('refreshToken');
+    
+    // Disconnect WebSocket to prevent notifications from persisting
+    wsService.disconnect();
+    
+    // Clear React Query cache to remove notifications
+    queryClient.clear();
+    
+    // Clear auth state
     set({ user: null, isAuthenticated: false });
+    
+    // Optional: Clear localStorage if any notification data is stored there
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('notifications');
+      sessionStorage.clear();
+    }
   },
 
   refreshToken: async () => {

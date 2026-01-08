@@ -25,7 +25,8 @@ public class AlertHistoryResponse {
     private String status;
     private String severity;
     private String category;
-    private UserSummaryDto assignedTo;
+    private List<UserSummaryDto> assignedUsers;
+    private List<TeamSummaryDto> assignedTeams;
     private UserSummaryDto acknowledgedBy;
     private UserSummaryDto resolvedBy;
     private LocalDateTime triggeredAt;

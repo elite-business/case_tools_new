@@ -2,6 +2,9 @@ package com.elite.casetools.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+import com.elite.casetools.dto.AssignmentInfo;
 
 import java.time.LocalDateTime;
 
@@ -45,9 +48,10 @@ public class AlertHistory extends BaseEntity {
     @Enumerated(EnumType.STRING)
     private AlertCategory category;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "assigned_to_id")
-    private User assignedTo;
+    // JSONB column for multiple assignees (users and teams)
+    @Column(name = "assigned_to", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String assignedTo; // JSON format: {"userIds": [1, 2], "teamIds": [3, 4]}
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "acknowledged_by_id")
@@ -98,5 +102,41 @@ public class AlertHistory extends BaseEntity {
 
     public enum AlertCategory {
         NETWORK, SYSTEM, APPLICATION, DATABASE, SECURITY, PERFORMANCE, OTHER
+    }
+    
+    // Helper methods for assignment handling
+    @Transient
+    public AssignmentInfo getAssignmentInfo() {
+        if (assignedTo == null || assignedTo.isEmpty()) {
+            return new AssignmentInfo();
+        }
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            return mapper.readValue(assignedTo, AssignmentInfo.class);
+        } catch (Exception e) {
+            return new AssignmentInfo();
+        }
+    }
+    
+    @Transient
+    public void setAssignmentInfo(AssignmentInfo info) {
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            this.assignedTo = mapper.writeValueAsString(info);
+        } catch (Exception e) {
+            this.assignedTo = "{\"userIds\": [], \"teamIds\": []}";
+        }
+    }
+    
+    @Transient
+    public boolean isAssignedToUser(Long userId) {
+        AssignmentInfo info = getAssignmentInfo();
+        return info.isUserAssigned(userId);
+    }
+    
+    @Transient
+    public boolean isAssignedToTeam(Long teamId) {
+        AssignmentInfo info = getAssignmentInfo();
+        return info.isTeamAssigned(teamId);
     }
 }

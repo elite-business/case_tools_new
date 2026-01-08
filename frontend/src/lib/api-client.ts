@@ -185,6 +185,7 @@ export const casesApi = {
   getById: (id: number) => apiClient.get(`/cases/${id}`),
   create: (data: any) => apiClient.post('/cases', data),
   update: (id: number, data: any) => apiClient.put(`/cases/${id}`, data),
+  updateStatus: (id: number, status: string) => apiClient.put(`/cases/${id}/status`, { status }),
   assign: (id: number, userId: number) => apiClient.post(`/cases/${id}/assign`, { userId }),
   addComment: (id: number, content: string, isInternal?: boolean) => 
     apiClient.post(`/cases/${id}/comments`, { content, isInternal }),
@@ -192,6 +193,8 @@ export const casesApi = {
   getActivities: (id: number) => apiClient.get(`/cases/${id}/activities`),
   close: (id: number, resolution: string, closingNotes?: string) => 
     apiClient.post(`/cases/${id}/close`, { resolution, closingNotes }),
+  resolve: (id: number, resolution: string) => 
+    apiClient.post(`/cases/${id}/resolve`, { resolution }),
   getStats: () => apiClient.get('/cases/stats'),
   getMyCases: () => apiClient.get('/cases/my-cases'),
 };

@@ -3,6 +3,7 @@ package com.elite.casetools.service;
 import com.elite.casetools.entity.User;
 import com.elite.casetools.entity.AlertHistory;
 import com.elite.casetools.entity.Case;
+import com.elite.casetools.dto.AssignmentInfo;
 import com.elite.casetools.repository.UserRepository;
 import com.elite.casetools.repository.TeamRepository;
 import lombok.RequiredArgsConstructor;
@@ -151,7 +152,7 @@ public class RoleBasedAccessService {
         }
 
         // User can manage alerts assigned to them
-        if (alert.getAssignedTo() != null && alert.getAssignedTo().equals(user)) {
+        if (alert.getAssignedTo() != null && alert.isAssignedToUser(user.getId())) {
             return true;
         }
 
@@ -177,7 +178,7 @@ public class RoleBasedAccessService {
         }
 
         // User can manage cases assigned to them
-        if (caseEntity.getAssignedTo() != null && caseEntity.getAssignedTo().equals(user)) {
+        if (caseEntity.getAssignedTo() != null && caseEntity.isAssignedToUser(user.getId())) {
             return true;
         }
 
@@ -311,7 +312,11 @@ public class RoleBasedAccessService {
         }
 
         List<Long> teamMemberIds = getTeamMemberIds(manager);
-        return teamMemberIds.contains(alert.getAssignedTo().getId());
+        AssignmentInfo assignmentInfo = alert.getAssignmentInfo();
+        
+        // Check if any assigned users are team members
+        return assignmentInfo.getUserIds().stream()
+                .anyMatch(teamMemberIds::contains);
     }
 
     /**
@@ -323,7 +328,11 @@ public class RoleBasedAccessService {
         }
 
         List<Long> teamMemberIds = getTeamMemberIds(manager);
-        return teamMemberIds.contains(caseEntity.getAssignedTo().getId());
+        AssignmentInfo assignmentInfo = caseEntity.getAssignmentInfo();
+        
+        // Check if any assigned users are team members
+        return assignmentInfo.getUserIds().stream()
+                .anyMatch(teamMemberIds::contains);
     }
 
     /**

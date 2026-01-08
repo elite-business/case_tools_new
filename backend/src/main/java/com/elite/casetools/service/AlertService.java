@@ -2,17 +2,18 @@ package com.elite.casetools.service;
 
 import com.elite.casetools.dto.*;
 import com.elite.casetools.entity.AlertHistory;
+import com.elite.casetools.entity.RuleAssignment;
 import com.elite.casetools.entity.User;
 import com.elite.casetools.entity.Team;
 import com.elite.casetools.exception.ResourceNotFoundException;
 import com.elite.casetools.repository.AlertHistoryRepository;
+import com.elite.casetools.repository.RuleAssignmentRepository;
 import com.elite.casetools.repository.UserRepository;
 import com.elite.casetools.repository.TeamRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
+
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.core.Authentication;
@@ -23,9 +24,13 @@ import org.springframework.util.StringUtils;
 
 import jakarta.persistence.criteria.Predicate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Service for alert management operations
@@ -37,6 +42,7 @@ import java.util.Optional;
 public class AlertService {
 
     private final AlertHistoryRepository alertHistoryRepository;
+    private final RuleAssignmentRepository ruleAssignmentRepository;
     private final UserRepository userRepository;
     private final TeamRepository teamRepository;
     private final NotificationService notificationService;
@@ -130,7 +136,10 @@ public class AlertService {
             throw new SecurityException("User does not have permission to assign alerts");
         }
         
-        alert.setAssignedTo(assignedTo);
+        // Create assignment info with the user
+        AssignmentInfo assignmentInfo = new AssignmentInfo();
+        assignmentInfo.addUser(assignedTo.getId());
+        alert.setAssignmentInfo(assignmentInfo);
         alert.setUpdatedAt(LocalDateTime.now());
         
         AlertHistory savedAlert = alertHistoryRepository.save(alert);
@@ -166,7 +175,7 @@ public class AlertService {
                     .append(",")
                     .append(alert.getCreatedAt())
                     .append(",")
-                    .append(alert.getAssignedTo() != null ? alert.getAssignedTo().getName() : "")
+                    .append(getAssignedUserNames(alert))
                     .append("\n");
         }
         
@@ -174,25 +183,101 @@ public class AlertService {
     }
 
     /**
-     * Process new alert from Grafana webhook
+     * Process individual alert from Grafana webhook alerts array
+     */
+    public AlertHistoryResponse processGrafanaAlertFromWebhook(GrafanaWebhookRequest.Alert alert, GrafanaWebhookRequest webhook) {
+        return processGrafanaAlertFromWebhook(alert, webhook, true);
+    }
+    
+    /**
+     * Process individual alert from Grafana webhook alerts array with option to skip notifications
+     */
+    public AlertHistoryResponse processGrafanaAlertFromWebhook(GrafanaWebhookRequest.Alert alert, GrafanaWebhookRequest webhook, boolean sendNotifications) {
+        log.info("Processing individual alert from Grafana: {}", alert.getLabels().getOrDefault("alertname", "Unknown"));
+        
+        // Generate alert ID for this specific alert
+        String alertId = generateAlertIdFromAlert(alert);
+        String fingerprint = StringUtils.hasText(alert.getFingerprint()) ? alert.getFingerprint() : UUID.randomUUID().toString();
+        
+        // Extract alert details
+        Map<String, String> labels = alert.getLabels() != null ? alert.getLabels() : new HashMap<>();
+        Map<String, String> annotations = alert.getAnnotations() != null ? alert.getAnnotations() : new HashMap<>();
+
+        // Extract Grafana rule UID from labels or generatorURL
+        String ruleUid = extractRuleUidFromAlert(alert);
+        
+        // Create alert history entry for THIS specific alert
+        AlertHistory alertHistory = AlertHistory.builder()
+                .alertId(alertId)
+                .grafanaAlertId(fingerprint)
+            .grafanaAlertUid(ruleUid)
+                .title(annotations.getOrDefault("summary", labels.getOrDefault("alertname", "Alert")))
+                .description(annotations.getOrDefault("description", "No description provided"))
+                .status(AlertHistory.AlertStatus.OPEN)
+                .severity(mapSeverity(labels.getOrDefault("severity", "MEDIUM")))
+                .category(mapCategory(labels.getOrDefault("category", "OTHER")))
+                .triggeredAt(alert.getStartsAt() != null ? alert.getStartsAt().toLocalDateTime() : LocalDateTime.now())
+                .source("Grafana")
+            .ruleId(labels.containsKey("rule_id") ? labels.get("rule_id") : ruleUid)
+                .ruleName(labels.getOrDefault("alertname", webhook.getTitle()))
+                .build();
+        
+        // Auto-assign if rule has assignment configuration
+        assignAlertBasedOnRule(alertHistory);
+        
+        AlertHistory savedAlert = alertHistoryRepository.save(alertHistory);
+        
+        // Only send notifications if requested (skip when called from webhook service)
+        if (sendNotifications) {
+            notifyNewAlert(savedAlert);
+        }
+        
+        return mapToResponse(savedAlert);
+    }
+    
+    /**
+     * Generate alert ID from individual alert
+     */
+    private String generateAlertIdFromAlert(GrafanaWebhookRequest.Alert alert) {
+        // Check if alertId exists in labels
+        if (alert.getLabels() != null && alert.getLabels().containsKey("alertId")) {
+            return alert.getLabels().get("alertId");
+        }
+        
+        // Use fingerprint if available
+        if (StringUtils.hasText(alert.getFingerprint())) {
+            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+            return "ALERT-" + alert.getFingerprint().substring(0, Math.min(8, alert.getFingerprint().length())) + "-" + timestamp;
+        }
+        
+        // Generate UUID-based alert ID
+        return "ALERT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase() + "-" + 
+               LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+    }
+
+    /**
+     * Process new alert from Grafana webhook (LEGACY - for single alert processing)
      */
     public AlertHistoryResponse processGrafanaAlert(GrafanaWebhookRequest webhook) {
         log.info("Processing new alert from Grafana: {}", webhook.getTitle());
         
+        // Generate alert ID if not present
+        String alertId = generateAlertId(webhook);
+        
         // Create alert history entry
         AlertHistory alert = AlertHistory.builder()
-                .alertId(webhook.getAlertId())
-                .grafanaAlertId(webhook.getGrafanaAlertId())
+                .alertId(alertId)
+                .grafanaAlertId(webhook.getGrafanaAlertId() != null ? webhook.getGrafanaAlertId() : getFingerprint(webhook))
                 .grafanaAlertUid(webhook.getGrafanaAlertUid())
-                .title(webhook.getTitle())
-                .description(webhook.getDescription())
+                .title(webhook.getTitle() != null ? webhook.getTitle() : "Alert")
+                .description(webhook.getDescription() != null ? webhook.getDescription() : "No description provided")
                 .status(AlertHistory.AlertStatus.OPEN)
                 .severity(mapSeverity(webhook.getSeverity()))
                 .category(mapCategory(webhook.getCategory()))
                 .triggeredAt(webhook.getTriggeredAt())
                 .source("Grafana")
                 .ruleId(webhook.getRuleId())
-                .ruleName(webhook.getRuleName())
+                .ruleName(webhook.getRuleName() != null ? webhook.getRuleName() : getAlertName(webhook))
                 .build();
         
         // Auto-assign if rule has assignment configuration
@@ -207,12 +292,177 @@ public class AlertService {
     }
     
     /**
+     * Generate a unique alert ID if not present in the webhook
+     */
+    private String generateAlertId(GrafanaWebhookRequest webhook) {
+        // Check if webhook already has an alertId
+        if (StringUtils.hasText(webhook.getAlertId())) {
+            return webhook.getAlertId();
+        }
+        
+        // Check if we have alerts array with fingerprint
+        if (webhook.getAlerts() != null && !webhook.getAlerts().isEmpty()) {
+            GrafanaWebhookRequest.Alert firstAlert = webhook.getAlerts().get(0);
+            
+            // Try to get from labels
+            if (firstAlert.getLabels() != null && firstAlert.getLabels().containsKey("alertId")) {
+                return firstAlert.getLabels().get("alertId");
+            }
+            
+            // Use fingerprint if available
+            if (StringUtils.hasText(firstAlert.getFingerprint())) {
+                String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+                return "ALERT-" + firstAlert.getFingerprint().substring(0, Math.min(8, firstAlert.getFingerprint().length())) + "-" + timestamp;
+            }
+        }
+        
+        // Fallback to fingerprint from webhook
+        if (StringUtils.hasText(webhook.getFingerprint())) {
+            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+            return "ALERT-" + webhook.getFingerprint().substring(0, Math.min(8, webhook.getFingerprint().length())) + "-" + timestamp;
+        }
+        
+        // Last resort: generate UUID-based alert ID
+        return "ALERT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase() + "-" + 
+               LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+    }
+    
+    /**
+     * Get fingerprint from webhook
+     */
+    private String getFingerprint(GrafanaWebhookRequest webhook) {
+        // Try to get from alerts array first
+        if (webhook.getAlerts() != null && !webhook.getAlerts().isEmpty()) {
+            String fp = webhook.getAlerts().get(0).getFingerprint();
+            if (StringUtils.hasText(fp)) {
+                return fp;
+            }
+        }
+        
+        // Fallback to webhook fingerprint
+        return webhook.getFingerprint();
+    }
+    
+    /**
+     * Get alert name from webhook
+     */
+    private String getAlertName(GrafanaWebhookRequest webhook) {
+        // Try to get from alerts array first
+        if (webhook.getAlerts() != null && !webhook.getAlerts().isEmpty()) {
+            Map<String, String> labels = webhook.getAlerts().get(0).getLabels();
+            if (labels != null && labels.containsKey("alertname")) {
+                return labels.get("alertname");
+            }
+        }
+        
+        // Fallback to common labels
+        if (webhook.getCommonLabels() != null && webhook.getCommonLabels().containsKey("alertname")) {
+            return webhook.getCommonLabels().get("alertname");
+        }
+        
+        return webhook.getAlertName();
+    }
+
+    /**
+     * Extract Grafana rule UID from alert labels or generatorURL
+     */
+    private String extractRuleUidFromAlert(GrafanaWebhookRequest.Alert alert) {
+        Map<String, String> labels = alert.getLabels();
+
+        if (labels != null) {
+            // Common label keys that may carry the rule UID
+            if (labels.containsKey("rule_id")) {
+                return labels.get("rule_id");
+            }
+            if (labels.containsKey("__alert_rule_uid__")) {
+                return labels.get("__alert_rule_uid__");
+            }
+            if (labels.containsKey("alertuid")) {
+                return labels.get("alertuid");
+            }
+            if (labels.containsKey("rule_uid")) {
+                return labels.get("rule_uid");
+            }
+        }
+
+        String generatorURL = alert.getGeneratorURL();
+        if (StringUtils.hasText(generatorURL)) {
+            // Pattern: /alerting/grafana/{rule_uid}/view or /alerting/grafana/{rule_uid}
+            if (generatorURL.contains("/alerting/grafana/")) {
+                int start = generatorURL.indexOf("/alerting/grafana/") + 18;
+                int end = generatorURL.indexOf("/", start);
+                if (end > start) {
+                    return generatorURL.substring(start, end);
+                } else if (end == -1 && start < generatorURL.length()) {
+                    return generatorURL.substring(start);
+                }
+            }
+
+            // Query parameter variant: ruleUID=
+            if (generatorURL.contains("ruleUID=")) {
+                int start = generatorURL.indexOf("ruleUID=") + 8;
+                int end = generatorURL.indexOf("&", start);
+                return end > start ? generatorURL.substring(start, end) : generatorURL.substring(start);
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Assign alert based on rule configuration
      */
     private void assignAlertBasedOnRule(AlertHistory alert) {
-        // Since AlertRuleDefinition is removed, we'll skip auto-assignment for now
-        // This should be replaced with RuleAssignment-based logic
-        log.debug("Auto-assignment based on rules is disabled - AlertRuleDefinition removed");
+        try {
+            String ruleUid = alert.getGrafanaAlertUid();
+            if (!StringUtils.hasText(ruleUid)) {
+                log.debug("No rule UID found for alert {}, skipping auto-assign", alert.getAlertId());
+                return;
+            }
+
+            Optional<RuleAssignment> raOpt = ruleAssignmentRepository.findByGrafanaRuleUid(ruleUid);
+            if (raOpt.isEmpty()) {
+                log.debug("No rule assignment configured for UID {}", ruleUid);
+                return;
+            }
+
+            RuleAssignment ra = raOpt.get();
+            if (!Boolean.TRUE.equals(ra.getActive())) {
+                log.debug("Rule assignment {} inactive, skipping auto-assign", ra.getId());
+                return;
+            }
+
+            // Create assignment info with ALL assigned users and teams from the rule
+            AssignmentInfo assignmentInfo = new AssignmentInfo();
+            
+            // Add all assigned users from the rule
+            if (ra.getAssignedUsers() != null) {
+                for (User user : ra.getAssignedUsers()) {
+                    assignmentInfo.addUser(user.getId());
+                    log.debug("Added user {} to alert assignment", user.getLogin());
+                }
+            }
+            
+            // Add all assigned teams from the rule
+            if (ra.getAssignedTeams() != null) {
+                for (Team team : ra.getAssignedTeams()) {
+                    assignmentInfo.addTeam(team.getId());
+                    log.debug("Added team {} to alert assignment", team.getName());
+                }
+            }
+            
+            // Only set assignment info if we have assignments
+            if (assignmentInfo.hasAssignments()) {
+                alert.setAssignmentInfo(assignmentInfo);
+                alert.setUpdatedAt(LocalDateTime.now());
+                log.info("Auto-assigned alert {} - Users: {}, Teams: {}", 
+                    alert.getAlertId(), assignmentInfo.getUserIds(), assignmentInfo.getTeamIds());
+            } else {
+                log.debug("No users or teams assigned to rule {}, leaving alert unassigned", ruleUid);
+            }
+        } catch (Exception e) {
+            log.error("Failed auto-assigning alert {} based on rule", alert.getAlertId(), e);
+        }
     }
     
     /**
@@ -291,14 +541,23 @@ public class AlertService {
      * Helper method to map AlertHistory entity to response DTO
      */
     private AlertHistoryResponse mapToResponse(AlertHistory alert) {
-        UserSummaryDto assignedToDto = null;
-        if (alert.getAssignedTo() != null) {
-            assignedToDto = UserSummaryDto.builder()
-                    .id(alert.getAssignedTo().getId())
-                    .name(alert.getAssignedTo().getName())
-                    .email(alert.getAssignedTo().getEmail())
-                    .build();
+        // Get all assigned users
+        List<UserSummaryDto> assignedUsers = new ArrayList<>();
+        AssignmentInfo assignmentInfo = alert.getAssignmentInfo();
+        if (assignmentInfo != null && assignmentInfo.hasAssignments()) {
+            for (Long userId : assignmentInfo.getUserIds()) {
+                userRepository.findById(userId).ifPresent(user ->
+                    assignedUsers.add(UserSummaryDto.builder()
+                        .id(user.getId())
+                        .name(user.getName())
+                        .email(user.getEmail())
+                        .build())
+                );
+            }
         }
+        
+        // Get all assigned teams (TODO: implement when Team entity is available)
+        List<TeamSummaryDto> assignedTeams = new ArrayList<>();
         
         UserSummaryDto acknowledgedByDto = null;
         if (alert.getAcknowledgedBy() != null) {
@@ -327,7 +586,8 @@ public class AlertService {
                 .status(alert.getStatus().name())
                 .severity(alert.getSeverity().name())
                 .category(alert.getCategory() != null ? alert.getCategory().name() : null)
-                .assignedTo(assignedToDto)
+                .assignedUsers(assignedUsers)
+                .assignedTeams(assignedTeams)
                 .acknowledgedBy(acknowledgedByDto)
                 .resolvedBy(resolvedByDto)
                 .triggeredAt(alert.getTriggeredAt() != null ? alert.getTriggeredAt() : alert.getCreatedAt())
@@ -383,42 +643,52 @@ public class AlertService {
     
     
     private void notifyNewAlert(AlertHistory alert) {
-        if (alert.getAssignedTo() != null) {
-            notifyAlertAssigned(alert, alert.getAssignedTo(), null);
-        } else {
-            // Notify admins about unassigned alert
-            webSocketService.sendToChannel("admin", "alert.unassigned", alert);
-        }
+        // DISABLED: We only send notifications for cases, not for alert history
+        log.debug("Alert notification disabled for alert {} - notifications sent only for cases", alert.getAlertId());
     }
     
     private void notifyAlertAssigned(AlertHistory alert, User assignedTo, User assignedBy) {
-        log.info("Sending assignment notification for alert {} to user {}", alert.getAlertId(), assignedTo.getLogin());
-        
-        // WebSocket notification
-        webSocketService.sendToUser(assignedTo.getId(), "alert.assigned", alert);
-        
-        // Email notification (if enabled)
-        notificationService.sendSimpleEmail(
-                assignedTo.getEmail(),
-                "Alert Assigned: " + alert.getTitle(),
-                String.format("Alert %s has been assigned to you. Priority: %s. Please check the system for details.", 
-                        alert.getAlertId(), alert.getSeverity())
-        );
-        
-        if (assignedBy != null) {
-            log.info("Alert {} assigned by {} to {}", alert.getAlertId(), assignedBy.getLogin(), assignedTo.getLogin());
-        }
+        // DISABLED: We only send notifications for cases, not for alert history
+        log.debug("Alert assignment notification disabled for alert {} - notifications sent only for cases", alert.getAlertId());
+    }
+
+    private void notifyRuleAssignees(AlertHistory alert) {
+        // DISABLED: We only send notifications for cases, not for alert history
+        log.debug("Rule assignee notification disabled for alert {} - notifications sent only for cases", alert.getAlertId());
     }
     
     private void notifyAlertStatusChange(AlertHistory alert, String action, User user) {
         log.info("Alert {} {} by user {}", alert.getAlertId(), action, user.getLogin());
         
-        // Send to assigned user if different from the user who performed the action
-        if (alert.getAssignedTo() != null && !alert.getAssignedTo().equals(user)) {
-            webSocketService.sendToUser(alert.getAssignedTo().getId(), "alert." + action, alert);
+        // Send to assigned users if different from the user who performed the action
+        AssignmentInfo assignmentInfo = alert.getAssignmentInfo();
+        if (assignmentInfo.hasAssignments()) {
+            for (Long userId : assignmentInfo.getUserIds()) {
+                if (!userId.equals(user.getId())) {
+                    webSocketService.sendToUser(userId, "alert." + action, alert);
+                }
+            }
         }
         
         // Send to admin channel
         webSocketService.sendToChannel("admin", "alert." + action, alert);
+    }
+    
+    /**
+     * Helper method to get assigned user names for CSV export
+     */
+    private String getAssignedUserNames(AlertHistory alert) {
+        AssignmentInfo assignmentInfo = alert.getAssignmentInfo();
+        if (!assignmentInfo.hasAssignments()) {
+            return "";
+        }
+        
+        List<String> userNames = new ArrayList<>();
+        for (Long userId : assignmentInfo.getUserIds()) {
+            userRepository.findById(userId)
+                    .ifPresent(user -> userNames.add(user.getName()));
+        }
+        
+        return String.join(", ", userNames);
     }
 }

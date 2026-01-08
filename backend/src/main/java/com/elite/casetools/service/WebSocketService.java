@@ -23,16 +23,19 @@ public class WebSocketService {
      */
     public void sendToUser(Long userId, String event, Object payload) {
         try {
-            String destination = "/user/" + userId + "/queue/notifications";
-            
             WebSocketMessage message = WebSocketMessage.builder()
                     .event(event)
                     .payload(objectMapper.writeValueAsString(payload))
                     .timestamp(System.currentTimeMillis())
                     .build();
             
+            // Send to user-specific topic that frontend subscribes to
+            // Using only ONE destination to avoid duplicates
+            String destination = "/topic/notifications/" + userId;
             messagingTemplate.convertAndSend(destination, message);
-            log.debug("Sent WebSocket message to user {}: {}", userId, event);
+            
+            log.info("Sent WebSocket message to user {} on destination {}: {}", 
+                userId, destination, event);
         } catch (Exception e) {
             log.error("Failed to send WebSocket message to user {}", userId, e);
         }
@@ -79,25 +82,46 @@ public class WebSocketService {
     }
 
     /**
-     * Notify about new case creation
+     * Notify about new case creation - ONLY to relevant users
      */
     public void notifyNewCase(Case caseEntity) {
-        sendToChannel("cases", "case.created", caseEntity);
-        if (caseEntity.getAssignedTo() != null) {
-            sendToUser(caseEntity.getAssignedTo().getId(), "case.assigned", caseEntity);
+        com.elite.casetools.dto.AssignmentInfo assignmentInfo = caseEntity.getAssignmentInfo();
+        
+        if (assignmentInfo.hasAssignments()) {
+            // Notify all assigned users
+            if (assignmentInfo.getUserIds() != null) {
+                for (Long userId : assignmentInfo.getUserIds()) {
+                    sendToUser(userId, "case.assigned", caseEntity);
+                    log.info("Sent new case notification to user {} for case {}", 
+                        userId, caseEntity.getCaseNumber());
+                }
+            }
+            
+            // Note: Team notifications are handled separately in ImprovedWebhookService
+        } else {
+            // Unassigned cases go only to admin channel
+            sendToChannel("admin", "admin.unassigned-case", caseEntity);
+            log.info("Sent unassigned case notification to admin channel for case {}", 
+                caseEntity.getCaseNumber());
         }
-        log.info("Sent new case WebSocket notifications for case {}", caseEntity.getCaseNumber());
     }
 
     /**
-     * Notify about case update
+     * Notify about case update - ONLY to relevant users
      */
     public void notifyCaseUpdate(Case caseEntity) {
-        sendToChannel("cases", "case.updated", caseEntity);
-        if (caseEntity.getAssignedTo() != null) {
-            sendToUser(caseEntity.getAssignedTo().getId(), "case.updated", caseEntity);
+        com.elite.casetools.dto.AssignmentInfo assignmentInfo = caseEntity.getAssignmentInfo();
+        
+        if (assignmentInfo.hasAssignments()) {
+            // Notify all assigned users
+            if (assignmentInfo.getUserIds() != null) {
+                for (Long userId : assignmentInfo.getUserIds()) {
+                    sendToUser(userId, "case.updated", caseEntity);
+                    log.debug("Sent case update notification to user {} for case {}", 
+                        userId, caseEntity.getCaseNumber());
+                }
+            }
         }
-        log.debug("Sent case update WebSocket notifications for case {}", caseEntity.getCaseNumber());
     }
 
     /**

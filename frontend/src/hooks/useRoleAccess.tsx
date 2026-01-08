@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuthStore } from '@/store/auth-store';
 
 export type UserRole = 'ADMIN' | 'MANAGER' | 'ANALYST' | 'VIEWER';
 
@@ -119,7 +119,7 @@ const rolePermissionsMap: Record<UserRole, RolePermissions> = {
 };
 
 export function useRoleAccess() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading } = useAuthStore();
   const router = useRouter();
   const [permissions, setPermissions] = useState<RolePermissions>(
     rolePermissionsMap.VIEWER

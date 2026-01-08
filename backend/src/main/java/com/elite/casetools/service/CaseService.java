@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -176,7 +177,17 @@ public class CaseService {
         log.info("Assigning case {} to user {}", caseId, userId);
 
         Case caseEntity = getCaseById(caseId);
-        User previousAssignee = caseEntity.getAssignedTo();
+        
+        // Get previous assignee names for activity logging
+        AssignmentInfo previousAssignment = caseEntity.getAssignmentInfo();
+        String oldValue = "Unassigned";
+        if (previousAssignment.hasAssignments()) {
+            List<String> assigneeNames = new ArrayList<>();
+            for (Long prevUserId : previousAssignment.getUserIds()) {
+                userRepository.findById(prevUserId).ifPresent(user -> assigneeNames.add(user.getName()));
+            }
+            oldValue = String.join(", ", assigneeNames);
+        }
 
         assignCaseToUser(caseEntity, userId);
         
@@ -187,8 +198,8 @@ public class CaseService {
         Case savedCase = caseRepository.save(caseEntity);
 
         // Add assignment activity
-        String oldValue = previousAssignee != null ? previousAssignee.getName() : "Unassigned";
-        String newValue = savedCase.getAssignedTo().getName();
+        User newAssignee = userRepository.findById(userId).orElse(null);
+        String newValue = newAssignee != null ? newAssignee.getName() : "Unknown User";
         addActivity(savedCase, CaseActivity.ActivityType.ASSIGNED, "assignedTo", oldValue, newValue, 
                    "Case assigned to " + newValue);
 
@@ -354,7 +365,11 @@ public class CaseService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
         
-        caseEntity.setAssignedTo(user);
+        // Create assignment info with the user
+        AssignmentInfo assignmentInfo = new AssignmentInfo();
+        assignmentInfo.addUser(userId);
+        caseEntity.setAssignmentInfo(assignmentInfo);
+        
         caseEntity.setAssignedAt(LocalDateTime.now());
         caseEntity.setAssignedBy(getCurrentUser());
     }
@@ -363,7 +378,12 @@ public class CaseService {
         Optional<User> userOpt = userRepository.findUserWithLeastActiveCases();
         if (userOpt.isPresent()) {
             User user = userOpt.get();
-            caseEntity.setAssignedTo(user);
+            
+            // Create assignment info with the user
+            AssignmentInfo assignmentInfo = new AssignmentInfo();
+            assignmentInfo.addUser(user.getId());
+            caseEntity.setAssignmentInfo(assignmentInfo);
+            
             caseEntity.setAssignedAt(LocalDateTime.now());
             caseEntity.setStatus(Case.CaseStatus.ASSIGNED);
             log.info("Auto-assigned case to user: {}", user.getName());

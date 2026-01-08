@@ -18,17 +18,21 @@ class WebSocketService {
   private client: Client | null = null;
   private userId: string | null = null;
   private token: string | null = null;
+  private userRoles: string[] = [];
+  private userTeams: string[] = []; // Team IDs the user belongs to
   private listeners: Map<string, Set<(notification: WebSocketNotification) => void>> = new Map();
   private connected: boolean = false;
   private notificationHandler: ((type: string, config: any) => void) | null = null;
 
-  connect(userId: string, token: string) {
+  connect(userId: string, token: string, roles?: string[], teams?: string[]) {
     if (this.connected && this.client?.connected) {
       return;
     }
 
     this.userId = userId;
     this.token = token;
+    this.userRoles = roles || [];
+    this.userTeams = teams || [];
 
     // Use SockJS for fallback support
     const wsUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
@@ -63,15 +67,39 @@ class WebSocketService {
         this.handleMessage(message);
       });
 
-      // Broadcast topic
-      this.client.subscribe('/topic/notifications', (message: IMessage) => {
+      // User-specific topic
+      this.client.subscribe(`/topic/notifications/${this.userId}`, (message: IMessage) => {
         this.handleMessage(message);
       });
 
-      // Admin channel (if user is admin)
-      this.client.subscribe('/topic/admin', (message: IMessage) => {
-        this.handleMessage(message);
-      });
+      // Subscribe to SPECIFIC team channels the user belongs to - NOT wildcard
+      // This prevents users from receiving notifications for teams they're not part of
+      if (this.userTeams && this.userTeams.length > 0) {
+        this.userTeams.forEach(teamId => {
+          const teamChannel = `/topic/team.${teamId}`;
+          this.client.subscribe(teamChannel, (message: IMessage) => {
+            console.debug(`Received message on team channel ${teamId}:`, message);
+            this.handleMessage(message);
+          });
+          console.log(`Subscribed to team channel: ${teamChannel}`);
+        });
+      }
+
+      // Admin channel - ONLY subscribe if user has admin role
+      const isAdmin = this.userRoles.includes('ADMIN') || this.userRoles.includes('ROLE_ADMIN');
+      if (isAdmin) {
+        this.client.subscribe('/topic/admin', (message: IMessage) => {
+          console.debug('Received admin message:', message);
+          this.handleMessage(message);
+        });
+        
+        // Subscribe to unassigned case notifications for admins only
+        this.client.subscribe('/topic/admin/unassigned-case', (message: IMessage) => {
+          console.debug('Received unassigned case message:', message);
+          this.handleMessage(message);
+        });
+        console.log('Subscribed to admin channels');
+      }
     }
 
     this.showNotificationInternal('success', {
@@ -109,38 +137,41 @@ class WebSocketService {
   private handleMessage(message: IMessage) {
     try {
       const data = JSON.parse(message.body);
+      console.debug('Received WebSocket message:', data);
 
       // Parse the WebSocket message
       let notificationData: WebSocketNotification;
       
       if (data.payload) {
-        // Message from backend WebSocketService
+        // Message from backend WebSocketService with payload wrapper
         const payload = typeof data.payload === 'string' ? JSON.parse(data.payload) : data.payload;
+        
+        // Extract notification data from the structured payload
         notificationData = {
           id: payload.id || Date.now().toString(),
-          type: payload.type || 'alert',
-          severity: payload.severity || 'info',
-          title: payload.title || 'Notification',
-          message: payload.message || '',
-          timestamp: new Date(data.timestamp || Date.now()),
-          data: payload.data,
+          type: this.mapEventToType(data.event) || payload.type || 'alert',
+          severity: this.mapSeverity(payload.severity) || 'info',
+          title: payload.title || this.getDefaultTitle(data.event),
+          message: payload.message || this.buildMessage(payload),
+          timestamp: new Date(data.timestamp || payload.timestamp || Date.now()),
+          data: payload.data || payload,
           read: false
         };
       } else {
-        // Direct notification format
+        // Direct notification format from ImprovedWebhookService
         notificationData = {
           id: data.id || Date.now().toString(),
-          type: data.type || 'alert',
-          severity: data.severity || 'info',
-          title: data.title || 'Notification',
-          message: data.message || '',
+          type: this.mapEventToType(data.event) || data.type || 'alert',
+          severity: this.mapSeverity(data.severity) || 'info',
+          title: data.title || this.getDefaultTitle(data.type),
+          message: data.message || this.buildMessage(data),
           timestamp: new Date(data.timestamp || Date.now()),
-          data: data.data,
+          data: data.data || data,
           read: false
         };
       }
 
-      // Show notification
+      // Show notification with proper formatting
       this.showNotification(notificationData);
       
       // Notify listeners
@@ -148,8 +179,56 @@ class WebSocketService {
       this.notifyListeners('all', notificationData);
       
     } catch (error) {
-      // Failed to parse WebSocket message
+      console.error('Failed to parse WebSocket message:', error);
     }
+  }
+
+  private mapEventToType(event?: string): 'alert' | 'case_update' | 'assignment' | 'system' {
+    if (!event) return 'alert';
+    if (event.includes('case.assigned') || event.includes('case.team')) return 'assignment';
+    if (event.includes('case.updated')) return 'case_update';
+    if (event.includes('admin')) return 'system';
+    return 'alert';
+  }
+
+  private mapSeverity(severity?: string): 'critical' | 'high' | 'medium' | 'low' | 'info' {
+    if (!severity) return 'info';
+    const sev = severity.toLowerCase();
+    if (sev === 'critical') return 'critical';
+    if (sev === 'high') return 'high';
+    if (sev === 'medium') return 'medium';
+    if (sev === 'low') return 'low';
+    return 'info';
+  }
+
+  private getDefaultTitle(event?: string): string {
+    if (!event) return 'Notification';
+    if (event.includes('case.assigned')) return 'Case Assigned';
+    if (event.includes('case.team')) return 'Team Case';
+    if (event.includes('case.created')) return 'New Case Created';
+    if (event.includes('case.updated')) return 'Case Updated';
+    if (event.includes('admin.unassigned')) return 'Unassigned Case';
+    return 'Notification';
+  }
+
+  private buildMessage(data: any): string {
+    if (data.message) return data.message;
+    
+    if (data.data) {
+      const caseData = data.data;
+      const parts = [];
+      
+      if (caseData.caseNumber) parts.push(`Case: ${caseData.caseNumber}`);
+      if (caseData.caseTitle) parts.push(caseData.caseTitle);
+      if (caseData.severity) parts.push(`Severity: ${caseData.severity}`);
+      if (caseData.assignedTo && caseData.assignedTo !== 'Unassigned') {
+        parts.push(`Assigned to: ${caseData.assignedTo}`);
+      }
+      
+      return parts.join('\n') || 'New notification received';
+    }
+    
+    return 'New notification received';
   }
 
   private showNotification(notif: WebSocketNotification) {

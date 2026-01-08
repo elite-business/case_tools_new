@@ -14,23 +14,36 @@ export interface User {
 
 export interface Case {
   id: number;
-  caseId: string; // Human readable case ID like "CS-2024-001"
+  caseNumber: string; // Backend uses caseNumber, not caseId
   title: string;
   description: string;
-  severity: CaseSeverity;
-  priority: CasePriority;
   status: CaseStatus;
+  severity: CaseSeverity;
+  priority: number; // Backend uses number for priority (1=Urgent, 2=High, 3=Medium, 4=Low)
   category: string;
-  tags: string[];
-  assignedTo?: User;
-  createdBy: User;
+  assignedTo?: UserSummaryDto;
+  assignedBy?: UserSummaryDto;
   createdAt: string;
   updatedAt: string;
+  assignedAt?: string;
+  resolvedAt?: string;
   closedAt?: string;
-  resolution?: string;
-  closingNotes?: string;
-  estimatedResolutionTime?: number; // in hours
-  actualResolutionTime?: number; // in hours
+  slaDeadline?: string;
+  slaBreached?: boolean;
+  rootCause?: string;
+  resolutionActions?: string;
+  preventiveMeasures?: string;
+  closureReason?: string;
+  estimatedLoss?: number;
+  actualLoss?: number;
+  affectedServices?: string;
+  affectedCustomers?: number;
+  tags?: string[];
+  customFields?: string;
+  alertId?: number;
+  grafanaAlertId?: string;
+  grafanaAlertUid?: string;
+  resolutionTimeMinutes?: number;
 }
 
 export interface CaseComment {
@@ -66,7 +79,8 @@ export type CaseStatus =
 
 export type CaseSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
-export type CasePriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+export type CasePriority = 1 | 2 | 3 | 4; // 1=Urgent, 2=High, 3=Medium, 4=Low
+export type CasePriorityLabel = 'URGENT' | 'HIGH' | 'MEDIUM' | 'LOW';
 
 export type ActivityType = 
   | 'CREATED' 
@@ -90,7 +104,8 @@ export interface CaseFilters {
   search?: string;
   category?: string;
   tags?: string[];
-  dateRange?:any
+  dateRange?: [string, string];
+  slaBreached?: boolean;
 }
 
 export interface CaseStats {
@@ -794,6 +809,15 @@ export interface UserSummary {
   email: string;
   role: string;
   department?: string;
+}
+
+// DTO from backend for case assignments
+export interface UserSummaryDto {
+  id: number;
+  username: string;
+  email: string;
+  name: string;
+  fullName?: string; // For compatibility
 }
 
 export interface TeamSummary {

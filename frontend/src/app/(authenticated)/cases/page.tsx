@@ -46,7 +46,8 @@ import {
 } from '@ant-design/icons';
 import { motion, AnimatePresence } from 'framer-motion';
 import { casesApi, usersApi, handleApiError } from '@/lib/api-client';
-import { Case, CaseFilters, User, CaseStatus, CaseSeverity, CasePriority } from '@/lib/types';
+import { Case, CaseFilters, User, UserSummaryDto, CaseStatus, CaseSeverity, CasePriority, CasePriorityLabel } from '@/lib/types';
+import { getPriorityLabel, getPriorityColor, getSeverityColor, getStatusColor, getSlaStatus, formatResolutionTime, getCategoryLabel, getPriorityValue } from '@/lib/utils/case-utils';
 import FilterBar, { FilterConfig } from '@/components/ui-system/FilterBar';
 import StatusIndicator from '@/components/ui-system/StatusIndicator';
 import ActionDropdown, { CommonActions } from '@/components/ui-system/ActionDropdown';
@@ -114,10 +115,10 @@ export default function CasesPage() {
       label: 'Priority',
       type: 'multiselect',
       options: [
-        { label: 'Urgent', value: 'URGENT', color: '#ff4d4f' },
-        { label: 'High', value: 'HIGH', color: '#ffa940' },
-        { label: 'Medium', value: 'MEDIUM', color: '#fadb14' },
-        { label: 'Low', value: 'LOW', color: '#52c41a' },
+        { label: 'Urgent', value: 1, color: '#ff4d4f' },
+        { label: 'High', value: 2, color: '#ffa940' },
+        { label: 'Medium', value: 3, color: '#fadb14' },
+        { label: 'Low', value: 4, color: '#52c41a' },
       ],
       width: 180,
     },
@@ -143,11 +144,12 @@ export default function CasesPage() {
       label: 'Category',
       type: 'select',
       options: [
-        { label: 'Revenue Assurance', value: 'revenue_assurance' },
-        { label: 'Fraud Detection', value: 'fraud_detection' },
-        { label: 'Quality Control', value: 'quality_control' },
-        { label: 'Performance', value: 'performance' },
-        { label: 'Configuration', value: 'configuration' },
+        { label: 'Revenue Loss', value: 'REVENUE_LOSS' },
+        { label: 'Network Issue', value: 'NETWORK_ISSUE' },
+        { label: 'Quality Issue', value: 'QUALITY' },
+        { label: 'Fraud Alert', value: 'FRAUD' },
+        { label: 'Performance', value: 'PERFORMANCE' },
+        { label: 'Custom', value: 'CUSTOM' },
       ],
       width: 180,
     },
@@ -228,19 +230,26 @@ export default function CasesPage() {
 
   const columns: ProColumns<Case>[] = [
     {
-      title: 'Case ID',
-      dataIndex: 'caseId',
-      key: 'caseId',
-      width: 120,
+      title: 'Case Number',
+      dataIndex: 'caseNumber',
+      key: 'caseNumber',
+      width: 140,
       fixed: 'left',
       render: (text: string, record: Case) => (
-        <Button 
-          type="link" 
-          onClick={() => router.push(`/cases/${record.id}`)}
-          style={{ padding: 0 }}
-        >
-          {text}
-        </Button>
+        <Space direction="vertical" size={0}>
+          <Button 
+            type="link" 
+            onClick={() => router.push(`/cases/${record.id}`)}
+            style={{ padding: 0 }}
+          >
+            {text}
+          </Button>
+          {record.grafanaAlertId && (
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              Alert: {record.grafanaAlertId.substring(0, 8)}...
+            </Text>
+          )}
+        </Space>
       ),
     },
     {
@@ -280,19 +289,19 @@ export default function CasesPage() {
       key: 'priority',
       width: 100,
       filters: [
-        { text: 'Urgent', value: 'URGENT' },
-        { text: 'High', value: 'HIGH' },
-        { text: 'Medium', value: 'MEDIUM' },
-        { text: 'Low', value: 'LOW' },
+        { text: 'Urgent', value: 1 },
+        { text: 'High', value: 2 },
+        { text: 'Medium', value: 3 },
+        { text: 'Low', value: 4 },
       ],
-      render: (priority: CasePriority) => (
-        <StatusIndicator 
-          type="priority" 
-          value={priority} 
-          showText 
-          animated={priority === 'URGENT'}
-        />
-      ),
+      render: (priority: CasePriority) => {
+        const label = getPriorityLabel(priority);
+        return (
+          <Tag color={getPriorityColor(priority)}>
+            {label}
+          </Tag>
+        );
+      },
     },
     {
       title: 'Status',
@@ -324,11 +333,14 @@ export default function CasesPage() {
       dataIndex: 'assignedTo',
       key: 'assignedTo',
       width: 150,
-      render: (assignedTo: User) => (
+      render: (assignedTo: UserSummaryDto) => (
         assignedTo ? (
-          <span>{assignedTo.fullName}</span>
+          <Space size={4}>
+            <UserOutlined style={{ fontSize: 12 }} />
+            <span>{assignedTo.name || assignedTo.fullName || assignedTo.username}</span>
+          </Space>
         ) : (
-          <span style={{ color: '#999' }}>Unassigned</span>
+          <span style={{ color: '#999', fontStyle: 'italic' }}>Unassigned</span>
         )
       ),
     },
@@ -336,7 +348,22 @@ export default function CasesPage() {
       title: 'Category',
       dataIndex: 'category',
       key: 'category',
+      width: 140,
+      render: (category: string) => getCategoryLabel(category),
+    },
+    {
+      title: 'SLA Status',
+      dataIndex: 'slaDeadline',
+      key: 'sla',
       width: 120,
+      render: (slaDeadline: string, record: Case) => {
+        const sla = getSlaStatus(slaDeadline, record.slaBreached);
+        return (
+          <Tag color={sla.color} icon={sla.status === 'breached' ? <ExclamationCircleOutlined /> : null}>
+            {sla.label}
+          </Tag>
+        );
+      },
     },
     {
       title: 'Created Date',

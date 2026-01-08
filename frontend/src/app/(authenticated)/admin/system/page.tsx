@@ -61,7 +61,7 @@ export default function SystemPage() {
   const { data: healthResponse, isLoading: healthLoading } = useQuery({
     queryKey: ['system-health'],
     queryFn: () => systemApi.getHealth(),
-    refetchInterval: 10000, // Refresh every 10 seconds
+    refetchInterval: 60000, // Refresh every 60 seconds
   });
 
   // Fetch system settings
@@ -86,7 +86,7 @@ export default function SystemPage() {
   const { data: statsResponse } = useQuery({
     queryKey: ['system-stats'],
     queryFn: () => systemApi.getSystemStats(),
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 60000, // Refresh every 60 seconds
   });
 
   const health: SystemHealth = healthResponse?.data || {
@@ -217,7 +217,7 @@ export default function SystemPage() {
     {
       title: 'Value',
       key: 'value',
-      render: (_, record: SystemSettings) => {
+      render: (_:any, record: SystemSettings) => {
         if (record.type === 'BOOLEAN') {
           return (
             <Switch
@@ -260,7 +260,7 @@ export default function SystemPage() {
     {
       title: 'Last Updated',
       key: 'updatedAt',
-      render: (_, record: SystemSettings) => (
+      render: (_:any, record: SystemSettings) => (
         <div>
           <div>{dayjs(record.updatedAt).format('MMM DD, YYYY HH:mm')}</div>
           <div className="text-xs text-gray-500">
@@ -276,7 +276,7 @@ export default function SystemPage() {
       title: 'Timestamp',
       key: 'timestamp',
       width: 180,
-      render: (_, record: any) => (
+      render: (_:any, record: any) => (
         dayjs(record.timestamp).format('MMM DD, HH:mm:ss')
       ),
     },

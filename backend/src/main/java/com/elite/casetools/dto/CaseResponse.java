@@ -25,7 +25,8 @@ public class CaseResponse {
     private String severity;
     private Integer priority;
     private String category;
-    private UserSummaryDto assignedTo;
+    private List<UserSummaryDto> assignedUsers;
+    private List<TeamSummaryDto> assignedTeams;
     private UserSummaryDto assignedBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

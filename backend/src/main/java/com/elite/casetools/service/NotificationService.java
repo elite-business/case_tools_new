@@ -2,6 +2,8 @@ package com.elite.casetools.service;
 
 import com.elite.casetools.entity.Case;
 import com.elite.casetools.entity.User;
+import com.elite.casetools.dto.AssignmentInfo;
+import com.elite.casetools.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,11 +30,14 @@ public class NotificationService {
 
     private final JavaMailSender mailSender;
     private final WebSocketService webSocketService;
+    private final UserRepository userRepository;
     
     public NotificationService(@Autowired(required = false) JavaMailSender mailSender, 
-                              WebSocketService webSocketService) {
+                              WebSocketService webSocketService,
+                              UserRepository userRepository) {
         this.mailSender = mailSender;
         this.webSocketService = webSocketService;
+        this.userRepository = userRepository;
     }
     
     @Value("${application.notification.email.enabled:true}")
@@ -64,16 +69,21 @@ public class NotificationService {
         variables.put("slaDeadline", caseEntity.getSlaDeadline() != null ? 
                       caseEntity.getSlaDeadline().format(DATE_FORMAT) : "Not set");
 
-        // Send notification to assigned user if available
-        if (caseEntity.getAssignedTo() != null) {
-            User assignee = caseEntity.getAssignedTo();
-            variables.put("userName", assignee.getName());
-            
-            if (emailEnabled && assignee.getEmail() != null) {
-                sendEmailNotification(assignee.getEmail(), subject, "case-created", variables);
+        // Send notification to all assigned users
+        AssignmentInfo assignmentInfo = caseEntity.getAssignmentInfo();
+        if (assignmentInfo.hasAssignments() && assignmentInfo.getUserIds() != null) {
+            for (Long userId : assignmentInfo.getUserIds()) {
+                User assignee = userRepository.findById(userId).orElse(null);
+                if (assignee != null) {
+                    variables.put("userName", assignee.getName());
+                    
+                    if (emailEnabled && assignee.getEmail() != null) {
+                        sendEmailNotification(assignee.getEmail(), subject, "case-created", variables);
+                    }
+                    
+                    webSocketService.sendToUser(assignee.getId(), "case.created", caseEntity);
+                }
             }
-            
-            webSocketService.sendToUser(assignee.getId(), "case.created", caseEntity);
         }
         
         // Send to admin channel
@@ -97,16 +107,23 @@ public class NotificationService {
         variables.put("resolvedAt", caseEntity.getResolvedAt() != null ? 
                       caseEntity.getResolvedAt().format(DATE_FORMAT) : "Unknown");
 
-        // Send notification to assigned user if available
+        // Send notification to assigned users if available
         if (caseEntity.getAssignedTo() != null) {
-            User assignee = caseEntity.getAssignedTo();
-            variables.put("userName", assignee.getName());
+            AssignmentInfo assignmentInfo = caseEntity.getAssignmentInfo();
             
-            if (emailEnabled && assignee.getEmail() != null) {
-                sendEmailNotification(assignee.getEmail(), subject, "case-resolved", variables);
+            // Notify assigned users
+            for (Long userId : assignmentInfo.getUserIds()) {
+                userRepository.findById(userId).ifPresent(assignee -> {
+                    Map<String, Object> userVariables = new HashMap<>(variables);
+                    userVariables.put("userName", assignee.getName());
+                    
+                    if (emailEnabled && assignee.getEmail() != null) {
+                        sendEmailNotification(assignee.getEmail(), subject, "case-resolved", userVariables);
+                    }
+                    
+                    webSocketService.sendToUser(assignee.getId(), "case.resolved", caseEntity);
+                });
             }
-            
-            webSocketService.sendToUser(assignee.getId(), "case.resolved", caseEntity);
         }
         
         // Send to admin channel
@@ -124,26 +141,31 @@ public class NotificationService {
             return;
         }
 
-        User assignee = caseEntity.getAssignedTo();
         String subject = String.format("New Case Assigned: %s", caseEntity.getCaseNumber());
+        AssignmentInfo assignmentInfo = caseEntity.getAssignmentInfo();
         
-        Map<String, Object> variables = new HashMap<>();
-        variables.put("userName", assignee.getName());
-        variables.put("caseNumber", caseEntity.getCaseNumber());
-        variables.put("caseTitle", caseEntity.getTitle());
-        variables.put("severity", caseEntity.getSeverity());
-        variables.put("slaDeadline", caseEntity.getSlaDeadline().format(DATE_FORMAT));
-        
-        // Send email notification
-        if (emailEnabled && assignee.getEmail() != null) {
-            sendEmailNotification(assignee.getEmail(), subject, "case-assigned", variables);
+        // Notify assigned users
+        for (Long userId : assignmentInfo.getUserIds()) {
+            userRepository.findById(userId).ifPresent(assignee -> {
+                Map<String, Object> variables = new HashMap<>();
+                variables.put("userName", assignee.getName());
+                variables.put("caseNumber", caseEntity.getCaseNumber());
+                variables.put("caseTitle", caseEntity.getTitle());
+                variables.put("severity", caseEntity.getSeverity());
+                variables.put("slaDeadline", caseEntity.getSlaDeadline().format(DATE_FORMAT));
+                
+                // Send email notification
+                if (emailEnabled && assignee.getEmail() != null) {
+                    sendEmailNotification(assignee.getEmail(), subject, "case-assigned", variables);
+                }
+                
+                // Send WebSocket notification
+                webSocketService.sendToUser(assignee.getId(), "case.assigned", caseEntity);
+                
+                log.info("Sent case assignment notification for case {} to user {}", 
+                        caseEntity.getCaseNumber(), assignee.getName());
+            });
         }
-        
-        // Send WebSocket notification
-        webSocketService.sendToUser(assignee.getId(), "case.assigned", caseEntity);
-        
-        log.info("Sent case assignment notification for case {} to user {}", 
-                caseEntity.getCaseNumber(), assignee.getName());
     }
 
     /**
@@ -155,26 +177,33 @@ public class NotificationService {
             return;
         }
 
-        User assignee = caseEntity.getAssignedTo();
+        AssignmentInfo assignmentInfo = caseEntity.getAssignmentInfo();
         String subject = String.format("SLA Breach Alert: %s", caseEntity.getCaseNumber());
         
         Map<String, Object> variables = new HashMap<>();
-        variables.put("userName", assignee.getName());
         variables.put("caseNumber", caseEntity.getCaseNumber());
         variables.put("caseTitle", caseEntity.getTitle());
         variables.put("severity", caseEntity.getSeverity());
         variables.put("slaDeadline", caseEntity.getSlaDeadline().format(DATE_FORMAT));
         
-        // Send email notification
-        if (emailEnabled && assignee.getEmail() != null) {
-            sendEmailNotification(assignee.getEmail(), subject, "sla-breach", variables);
+        // Send notifications to all assigned users
+        for (Long userId : assignmentInfo.getUserIds()) {
+            userRepository.findById(userId).ifPresent(assignee -> {
+                Map<String, Object> userVariables = new HashMap<>(variables);
+                userVariables.put("userName", assignee.getName());
+                
+                // Send email notification
+                if (emailEnabled && assignee.getEmail() != null) {
+                    sendEmailNotification(assignee.getEmail(), subject, "sla-breach", userVariables);
+                }
+                
+                // Send WebSocket notification
+                webSocketService.sendToUser(assignee.getId(), "case.sla-breach", caseEntity);
+                
+                log.warn("Sent SLA breach notification for case {} to user {}", 
+                        caseEntity.getCaseNumber(), assignee.getName());
+            });
         }
-        
-        // Send WebSocket notification
-        webSocketService.sendToUser(assignee.getId(), "case.sla-breach", caseEntity);
-        
-        log.warn("Sent SLA breach notification for case {} to user {}", 
-                caseEntity.getCaseNumber(), assignee.getName());
     }
 
     /**
@@ -191,7 +220,11 @@ public class NotificationService {
         update.put("case", caseEntity);
         update.put("updateType", updateType);
         
-        webSocketService.sendToUser(caseEntity.getAssignedTo().getId(), "case.updated", update);
+        // Send to all assigned users
+        AssignmentInfo assignmentInfo = caseEntity.getAssignmentInfo();
+        for (Long userId : assignmentInfo.getUserIds()) {
+            webSocketService.sendToUser(userId, "case.updated", update);
+        }
     }
 
     /**
@@ -261,6 +294,29 @@ public class NotificationService {
         webSocketService.sendToChannel("admin", "admin.notification", notification);
         
         log.info("Sent admin notification: {}", subject);
+    }
+
+    /**
+     * Notify ONLY administrators about unassigned cases
+     * This method ensures that unassigned cases are only visible to admins
+     */
+    @Async
+    public void notifyAdminsOnly(String subject, String message, Case caseEntity) {
+        // Create notification data for admins only
+        Map<String, Object> notification = new HashMap<>();
+        notification.put("subject", subject);
+        notification.put("message", message);
+        notification.put("caseId", caseEntity.getId());
+        notification.put("caseNumber", caseEntity.getCaseNumber());
+        notification.put("caseTitle", caseEntity.getTitle());
+        notification.put("severity", caseEntity.getSeverity().toString());
+        notification.put("isUnassigned", true);
+        notification.put("timestamp", System.currentTimeMillis());
+        
+        // Send WebSocket notification ONLY to admin channel (single notification)
+        webSocketService.sendToChannel("admin", "admin.unassigned-case", notification);
+        
+        log.info("Sent unassigned case notification to admins only for case: {}", caseEntity.getCaseNumber());
     }
 
     /**

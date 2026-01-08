@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { 
@@ -13,13 +13,17 @@ import {
   Button, 
   Space, 
   Tag, 
-  Dropdown, 
   Modal, 
   Select, 
   message,
   Badge,
   Tooltip,
-  Alert
+  Alert,
+  Card,
+  Row,
+  Col,
+  Statistic,
+  Typography
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -28,50 +32,34 @@ import {
   UserAddOutlined,
   CheckCircleOutlined,
   ExclamationCircleOutlined,
-  MoreOutlined,
   ReloadOutlined,
-  PlayCircleOutlined
+  PlayCircleOutlined,
+  ClockCircleOutlined,
+  TeamOutlined,
+  UserOutlined,
+  WarningOutlined
 } from '@ant-design/icons';
 import { casesApi, usersApi, handleApiError } from '@/lib/api-client';
-import { Case, User, CaseStatus, CaseSeverity, CasePriority } from '@/lib/types';
+import { Case, UserSummaryDto, CaseStatus, CaseSeverity, CasePriority } from '@/lib/types';
+import { getPriorityLabel, getPriorityColor, getSeverityColor, getStatusColor, getSlaStatus, getCategoryLabel } from '@/lib/utils/case-utils';
 import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
+
+dayjs.extend(relativeTime);
 
 const { confirm } = Modal;
-
-const statusColors: Record<CaseStatus, string> = {
-  OPEN: 'blue',
-  ASSIGNED: 'orange',
-  IN_PROGRESS: 'processing',
-  PENDING_CUSTOMER: 'warning',
-  PENDING_VENDOR: 'warning',
-  RESOLVED: 'success',
-  CLOSED: 'default',
-  CANCELLED: 'error',
-};
-
-const severityColors: Record<CaseSeverity, string> = {
-  CRITICAL: '#ff4d4f',
-  HIGH: '#ffa940',
-  MEDIUM: '#fadb14',
-  LOW: '#52c41a',
-};
-
-const priorityColors: Record<CasePriority, string> = {
-  URGENT: '#ff4d4f',
-  HIGH: '#ffa940',
-  MEDIUM: '#fadb14',
-  LOW: '#52c41a',
-};
+const { Text } = Typography;
 
 // Active statuses - cases that are not resolved/closed
 const ACTIVE_STATUSES: CaseStatus[] = ['OPEN', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_CUSTOMER', 'PENDING_VENDOR'];
 
 export default function ActiveCasesPage() {
   const router = useRouter();
-  const [actionRef, setActionRef] = useState<ActionType>();
+  const actionRef = useRef<ActionType>();
   const [assignModalVisible, setAssignModalVisible] = useState(false);
   const [selectedCase, setSelectedCase] = useState<Case | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<number>();
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
 
   // Fetch available users for assignment
   const { data: users } = useQuery({
@@ -80,9 +68,27 @@ export default function ActiveCasesPage() {
   });
 
   // Get active cases stats
-  const { data: stats } = useQuery({
-    queryKey: ['cases', 'stats'],
-    queryFn: () => casesApi.getStats(),
+  const { data: stats, isLoading: statsLoading } = useQuery({
+    queryKey: ['cases', 'active-stats'],
+    queryFn: async () => {
+      const response = await casesApi.getAll({ 
+        status: ACTIVE_STATUSES.join(','),
+        page: 0,
+        size: 1 
+      });
+      
+      // Calculate stats from active cases
+      return {
+        total: response.data.totalElements || 0,
+        critical: response.data.content?.filter((c: Case) => c.severity === 'CRITICAL').length || 0,
+        high: response.data.content?.filter((c: Case) => c.severity === 'HIGH').length || 0,
+        slaAtRisk: response.data.content?.filter((c: Case) => {
+          const sla = getSlaStatus(c.slaDeadline, c.slaBreached);
+          return sla.status === 'at-risk' || sla.status === 'breached';
+        }).length || 0,
+      };
+    },
+    refetchInterval: 30000, // Refresh every 30 seconds
   });
 
   const handleAssign = async () => {
@@ -94,54 +100,44 @@ export default function ActiveCasesPage() {
       setAssignModalVisible(false);
       setSelectedCase(null);
       setSelectedUserId(undefined);
-      actionRef?.reload();
+      actionRef.current?.reload();
     } catch (error) {
       message.error(handleApiError(error));
     }
   };
 
-  const handleStartWork = async (caseItem: Case) => {
+  const handleUpdateStatus = async (caseItem: Case, newStatus: CaseStatus) => {
     try {
-      await casesApi.update(caseItem.id, { status: 'IN_PROGRESS' });
-      message.success('Case status updated to In Progress');
-      actionRef?.reload();
+      await casesApi.updateStatus(caseItem.id, newStatus);
+      message.success('Status updated successfully');
+      actionRef.current?.reload();
     } catch (error) {
       message.error(handleApiError(error));
     }
-  };
-
-  const handleClose = (caseItem: Case) => {
-    confirm({
-      title: 'Close Case',
-      icon: <ExclamationCircleOutlined />,
-      content: 'Are you sure you want to close this case?',
-      onOk: async () => {
-        try {
-          await casesApi.close(caseItem.id, 'Manually closed', '');
-          message.success('Case closed successfully');
-          actionRef?.reload();
-        } catch (error) {
-          message.error(handleApiError(error));
-        }
-      },
-    });
   };
 
   const columns: ProColumns<Case>[] = [
     {
-      title: 'Case ID',
-      dataIndex: 'caseId',
-      key: 'caseId',
-      width: 120,
+      title: 'Case Number',
+      dataIndex: 'caseNumber',
+      key: 'caseNumber',
+      width: 140,
       fixed: 'left',
       render: (text: string, record: Case) => (
-        <Button 
-          type="link" 
-          onClick={() => router.push(`/cases/${record.id}`)}
-          style={{ padding: 0 }}
-        >
-          {text}
-        </Button>
+        <Space direction="vertical" size={0}>
+          <Button 
+            type="link" 
+            onClick={() => router.push(`/cases/${record.id}`)}
+            style={{ padding: 0 }}
+          >
+            {text}
+          </Button>
+          {record.grafanaAlertId && (
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              Alert: {record.grafanaAlertId.substring(0, 8)}...
+            </Text>
+          )}
+        </Space>
       ),
     },
     {
@@ -160,14 +156,10 @@ export default function ActiveCasesPage() {
       dataIndex: 'severity',
       key: 'severity',
       width: 100,
-      filters: [
-        { text: 'Critical', value: 'CRITICAL' },
-        { text: 'High', value: 'HIGH' },
-        { text: 'Medium', value: 'MEDIUM' },
-        { text: 'Low', value: 'LOW' },
-      ],
       render: (severity: CaseSeverity) => (
-        <Tag color={severityColors[severity]}>{severity}</Tag>
+        <Tag color={getSeverityColor(severity)}>
+          {severity}
+        </Tag>
       ),
     },
     {
@@ -175,30 +167,24 @@ export default function ActiveCasesPage() {
       dataIndex: 'priority',
       key: 'priority',
       width: 100,
-      filters: [
-        { text: 'Urgent', value: 'URGENT' },
-        { text: 'High', value: 'HIGH' },
-        { text: 'Medium', value: 'MEDIUM' },
-        { text: 'Low', value: 'LOW' },
-      ],
-      render: (priority: CasePriority) => (
-        <Tag color={priorityColors[priority]}>{priority}</Tag>
-      ),
+      render: (priority: CasePriority) => {
+        const label = getPriorityLabel(priority);
+        return (
+          <Tag color={getPriorityColor(priority)}>
+            {label}
+          </Tag>
+        );
+      },
     },
     {
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
       width: 140,
-      filters: ACTIVE_STATUSES.map(status => ({
-        text: status.replace('_', ' '),
-        value: status,
-      })),
       render: (status: CaseStatus) => (
-        <Badge 
-          status={statusColors[status] as any} 
-          text={status.replace('_', ' ')} 
-        />
+        <Tag color={getStatusColor(status)} icon={status === 'IN_PROGRESS' ? <PlayCircleOutlined /> : null}>
+          {status.replace(/_/g, ' ')}
+        </Tag>
       ),
     },
     {
@@ -206,125 +192,190 @@ export default function ActiveCasesPage() {
       dataIndex: 'assignedTo',
       key: 'assignedTo',
       width: 150,
-      render: (assignedTo: User) => (
+      render: (assignedTo: UserSummaryDto) => (
         assignedTo ? (
-          <span>{assignedTo.fullName}</span>
+          <Space size={4}>
+            <UserOutlined style={{ fontSize: 12 }} />
+            <span>{assignedTo.name || assignedTo.fullName || assignedTo.username}</span>
+          </Space>
         ) : (
-          <span style={{ color: '#999' }}>Unassigned</span>
+          <Tag color="warning" icon={<ExclamationCircleOutlined />}>
+            Unassigned
+          </Tag>
         )
       ),
+    },
+    {
+      title: 'Category',
+      dataIndex: 'category',
+      key: 'category',
+      width: 140,
+      render: (category: string) => getCategoryLabel(category),
+    },
+    {
+      title: 'SLA Status',
+      dataIndex: 'slaDeadline',
+      key: 'sla',
+      width: 140,
+      render: (slaDeadline: string, record: Case) => {
+        const sla = getSlaStatus(slaDeadline, record.slaBreached);
+        return (
+          <Space direction="vertical" size={0}>
+            <Tag color={sla.color} icon={sla.status === 'breached' ? <ExclamationCircleOutlined /> : <ClockCircleOutlined />}>
+              {sla.label}
+            </Tag>
+            {slaDeadline && (
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                {dayjs(slaDeadline).fromNow()}
+              </Text>
+            )}
+          </Space>
+        );
+      },
     },
     {
       title: 'Age',
       dataIndex: 'createdAt',
       key: 'age',
       width: 100,
-      sorter: true,
       render: (date: string) => {
-        const days = dayjs().diff(dayjs(date), 'day');
-        const hours = dayjs().diff(dayjs(date), 'hour');
-        
-        if (days > 0) {
-          return `${days}d`;
-        } else {
-          return `${hours}h`;
-        }
+        const hours = dayjs().diff(dayjs(date), 'hours');
+        const days = Math.floor(hours / 24);
+        const color = days > 7 ? 'red' : days > 3 ? 'orange' : 'green';
+        return (
+          <Tag color={color}>
+            {days > 0 ? `${days}d ${hours % 24}h` : `${hours}h`}
+          </Tag>
+        );
       },
-    },
-    {
-      title: 'Created Date',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
-      width: 150,
-      sorter: true,
-      render: (date: string) => dayjs(date).format('MMM DD, YYYY HH:mm'),
     },
     {
       title: 'Actions',
       key: 'actions',
-      width: 120,
+      width: 150,
       fixed: 'right',
       render: (_, record: Case) => (
-        <Dropdown
-          menu={{
-            items: [
-              {
-                key: 'view',
-                icon: <EyeOutlined />,
-                label: 'View Details',
-                onClick: () => router.push(`/cases/${record.id}`),
-              },
-              {
-                key: 'edit',
-                icon: <EditOutlined />,
-                label: 'Edit',
-                onClick: () => router.push(`/cases/${record.id}?mode=edit`),
-              },
-              {
-                key: 'start',
-                icon: <PlayCircleOutlined />,
-                label: 'Start Work',
-                disabled: record.status === 'IN_PROGRESS',
-                onClick: () => handleStartWork(record),
-              },
-              {
-                key: 'assign',
-                icon: <UserAddOutlined />,
-                label: 'Assign',
-                onClick: () => {
-                  setSelectedCase(record);
-                  setAssignModalVisible(true);
-                },
-              },
-              {
-                key: 'close',
-                icon: <CheckCircleOutlined />,
-                label: 'Close',
-                onClick: () => handleClose(record),
-              },
-            ],
-          }}
-        >
-          <Button type="text" icon={<MoreOutlined />} />
-        </Dropdown>
+        <Space>
+          <Tooltip title="View">
+            <Button 
+              size="small" 
+              icon={<EyeOutlined />}
+              onClick={() => router.push(`/cases/${record.id}`)}
+            />
+          </Tooltip>
+          <Tooltip title="Assign">
+            <Button 
+              size="small" 
+              icon={<UserAddOutlined />}
+              onClick={() => {
+                setSelectedCase(record);
+                setAssignModalVisible(true);
+              }}
+              disabled={record.status === 'CLOSED' || record.status === 'CANCELLED'}
+            />
+          </Tooltip>
+          <Tooltip title="Update Status">
+            <Button 
+              size="small" 
+              icon={<PlayCircleOutlined />}
+              onClick={() => {
+                if (record.status === 'OPEN' || record.status === 'ASSIGNED') {
+                  handleUpdateStatus(record, 'IN_PROGRESS');
+                }
+              }}
+              disabled={record.status === 'IN_PROGRESS' || !record.assignedTo}
+            />
+          </Tooltip>
+        </Space>
       ),
     },
   ];
 
-  const activeCasesCount = stats?.data ? 
-    stats.data.open + stats.data.assigned + stats.data.inProgress : 0;
-
   return (
     <PageContainer
-      title="Active Cases"
-      subTitle="Cases that require attention"
-      onBack={() => router.push('/cases')}
-      extra={[
-        <Button key="refresh" icon={<ReloadOutlined />} onClick={() => actionRef?.reload()}>
-          Refresh
-        </Button>,
-      ]}
+      header={{
+        title: 'Active Cases',
+        subTitle: 'Cases requiring immediate attention',
+        onBack: () => router.push('/cases'),
+        extra: [
+          <Button key="refresh" icon={<ReloadOutlined />} onClick={() => actionRef.current?.reload()}>
+            Refresh
+          </Button>,
+        ],
+      }}
     >
-      {activeCasesCount > 0 && (
-        <Alert
-          style={{ marginBottom: 16 }}
-          message={`${activeCasesCount} active cases requiring attention`}
-          type={activeCasesCount > 20 ? 'warning' : 'info'}
-          showIcon
-        />
-      )}
+      {/* Statistics Cards */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Col xs={24} sm={12} lg={6}>
+          <Card>
+            <Statistic
+              title="Total Active"
+              value={stats?.total || 0}
+              prefix={<TeamOutlined />}
+              loading={statsLoading}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <Card>
+            <Statistic
+              title="Critical Cases"
+              value={stats?.critical || 0}
+              valueStyle={{ color: '#ff4d4f' }}
+              prefix={<ExclamationCircleOutlined />}
+              loading={statsLoading}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <Card>
+            <Statistic
+              title="High Priority"
+              value={stats?.high || 0}
+              valueStyle={{ color: '#ffa940' }}
+              prefix={<WarningOutlined />}
+              loading={statsLoading}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <Card>
+            <Statistic
+              title="SLA at Risk"
+              value={stats?.slaAtRisk || 0}
+              valueStyle={{ color: '#fadb14' }}
+              prefix={<ClockCircleOutlined />}
+              loading={statsLoading}
+            />
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Active Cases Notice */}
+      <Alert
+        message="Active Cases View"
+        description="This view shows only cases that are currently active (Open, Assigned, In Progress, or Pending). Resolved and Closed cases are excluded."
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+        closable
+      />
 
       <ProTable<Case>
-        actionRef={(ref) => setActionRef(ref)}
+        actionRef={actionRef}
         columns={columns}
         request={async (params = {}, sort, filter) => {
           try {
             const queryParams: any = {
               page: params.current ? params.current - 1 : 0,
-              size: params.pageSize || 10,
-              search: params.title || '',
-              status: ACTIVE_STATUSES.join(','), // Filter for active statuses only
+              size: params.pageSize || 20,
+              status: ACTIVE_STATUSES.join(','), // Only active statuses
             };
+
+            // Handle search
+            if (params.keyword) {
+              queryParams.search = params.keyword;
+            }
 
             // Handle sorting
             if (sort && Object.keys(sort).length > 0) {
@@ -332,23 +383,8 @@ export default function ActiveCasesPage() {
               const sortOrder = sort[sortKey] === 'ascend' ? 'asc' : 'desc';
               queryParams.sort = `${sortKey},${sortOrder}`;
             } else {
-              // Default sort by creation date (newest first) and priority
-              queryParams.sort = 'priority,desc,createdAt,desc';
-            }
-
-            // Handle filters
-            if (filter) {
-              if (filter.status) {
-                // Intersect with active statuses
-                const activeFiltered = filter.status.filter((s: string) => 
-                  ACTIVE_STATUSES.includes(s as CaseStatus)
-                );
-                if (activeFiltered.length > 0) {
-                  queryParams.status = activeFiltered.join(',');
-                }
-              }
-              if (filter.severity) queryParams.severity = filter.severity.join(',');
-              if (filter.priority) queryParams.priority = filter.priority.join(',');
+              // Default sort by priority and severity
+              queryParams.sort = 'priority,asc';
             }
 
             const response = await casesApi.getAll(queryParams);
@@ -369,11 +405,13 @@ export default function ActiveCasesPage() {
         }}
         rowKey="id"
         search={{
-          labelWidth: 'auto',
+          labelWidth: 120,
+          placeholder: 'Search by case number or title...',
         }}
         pagination={{
           showSizeChanger: true,
           showQuickJumper: true,
+          showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} active cases`,
           defaultPageSize: 20,
           pageSizeOptions: ['10', '20', '50', '100'],
         }}
@@ -382,24 +420,38 @@ export default function ActiveCasesPage() {
           reload: true,
           density: true,
           setting: true,
+          fullScreen: true,
         }}
-        headerTitle={`Active Cases (${activeCasesCount})`}
-        rowClassName={(record) => {
-          if (record.severity === 'CRITICAL') return 'critical-row';
-          if (record.priority === 'URGENT') return 'urgent-row';
-          return '';
+        dateFormatter="string"
+        rowSelection={{
+          selectedRowKeys,
+          onChange: setSelectedRowKeys,
+          getCheckboxProps: (record: Case) => ({
+            disabled: record.status === 'CLOSED' || record.status === 'CANCELLED',
+          }),
         }}
-        toolBarRender={() => [
-          <Button key="all" onClick={() => router.push('/cases')}>
-            All Cases
-          </Button>,
-          <Button key="resolved" onClick={() => router.push('/cases/resolved')}>
-            Resolved Cases
-          </Button>,
-          <Button key="my-cases" onClick={() => router.push('/cases/my-cases')}>
-            My Cases
-          </Button>,
-        ]}
+        tableAlertRender={({ selectedRowKeys, selectedRows }) => {
+          return selectedRowKeys && selectedRowKeys.length > 0 ? (
+            <Space>
+              <span>Selected {selectedRowKeys.length} cases</span>
+              <Button size="small" onClick={() => setSelectedRowKeys([])}>
+                Clear Selection
+              </Button>
+            </Space>
+          ) : false;
+        }}
+        tableAlertOptionRender={() => {
+          return (
+            <Space>
+              <Button size="small" icon={<UserAddOutlined />}>
+                Bulk Assign
+              </Button>
+              <Button size="small" icon={<PlayCircleOutlined />}>
+                Start Progress
+              </Button>
+            </Space>
+          );
+        }}
       />
 
       <Modal
@@ -413,39 +465,40 @@ export default function ActiveCasesPage() {
         }}
         okButtonProps={{ disabled: !selectedUserId }}
       >
-        <Space direction="vertical" style={{ width: '100%' }}>
-          <div>
-            <strong>Case:</strong> {selectedCase?.title}
-          </div>
-          <div>
-            <strong>Assign to:</strong>
-            <Select
-              style={{ width: '100%', marginTop: 8 }}
-              placeholder="Select a user"
-              value={selectedUserId}
-              onChange={setSelectedUserId}
-              showSearch
-              filterOption={(input, option) =>
-                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-              }
-              options={users?.data?.filter((user: User) => user && user.id != null).map((user: User) => ({
-                value: user.id,
-                label: `${user.fullName} (${user.email})`,
-              })) || []}
-            />
-          </div>
+        <Space direction="vertical" style={{ width: '100%' }} size={16}>
+          {selectedCase && (
+            <Card size="small">
+              <Space direction="vertical" size={4}>
+                <Text strong>Case: {selectedCase.caseNumber}</Text>
+                <Text>{selectedCase.title}</Text>
+                <Space>
+                  <Tag color={getSeverityColor(selectedCase.severity)}>
+                    {selectedCase.severity}
+                  </Tag>
+                  <Tag color={getPriorityColor(selectedCase.priority)}>
+                    {getPriorityLabel(selectedCase.priority)}
+                  </Tag>
+                </Space>
+              </Space>
+            </Card>
+          )}
+          
+          <Select
+            style={{ width: '100%' }}
+            placeholder="Select a user"
+            value={selectedUserId}
+            onChange={setSelectedUserId}
+            showSearch
+            filterOption={(input, option) =>
+              (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+            }
+            options={users?.data?.map((user: any) => ({
+              value: user.id,
+              label: `${user.name || user.fullName} (${user.email})`,
+            })) || []}
+          />
         </Space>
       </Modal>
-
-      <style jsx global>{`
-        .critical-row {
-          background-color: #fff2f0 !important;
-        }
-        
-        .urgent-row {
-          background-color: #fffbf0 !important;
-        }
-      `}</style>
     </PageContainer>
   );
 }

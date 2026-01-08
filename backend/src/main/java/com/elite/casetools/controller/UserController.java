@@ -43,6 +43,28 @@ public class UserController {
     }
 
     /**
+     * Get teams for a specific user
+     */
+    @GetMapping("/{id}/teams")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER') or #id == authentication.principal.id")
+    public ResponseEntity<List<Long>> getUserTeams(@PathVariable Long id) {
+        log.info("Fetching teams for user: {}", id);
+        List<Long> teamIds = userService.getUserTeamIds(id);
+        return ResponseEntity.ok(teamIds);
+    }
+    
+    /**
+     * Get current user's teams
+     */
+    @GetMapping("/me/teams")
+    public ResponseEntity<List<Long>> getMyTeams() {
+        Long userId = userService.getCurrentUserId();
+        log.info("Fetching teams for current user: {}", userId);
+        List<Long> teamIds = userService.getUserTeamIds(userId);
+        return ResponseEntity.ok(teamIds);
+    }
+
+    /**
      * Get user by ID
      */
     @GetMapping("/{id}")

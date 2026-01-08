@@ -1,0 +1,47 @@
+<configuration>
+
+    <!-- Log file location -->
+    <property name="LOG_PATH" value="logs"/>
+    <property name="LOG_FILE" value="casetools.log"/>
+
+    <!-- Rolling file appender -->
+    <appender name="ROLLING_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}/${LOG_FILE}</file>
+
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <!-- Rotate daily and when file exceeds 10MB -->
+            <fileNamePattern>${LOG_PATH}/casetools.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <maxFileSize>10MB</maxFileSize>
+
+            <!-- Keep last 30 files -->
+            <maxHistory>30</maxHistory>
+
+            <!-- Optional: total disk usage cap -->
+            <totalSizeCap>300MB</totalSizeCap>
+        </rollingPolicy>
+
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Console logging for dev -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Root logger -->
+    <root level="WARN">
+        <appender-ref ref="ROLLING_FILE"/>
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+    <!-- Package-specific log levels -->
+    <logger name="com.elite.casetools" level="INFO"/>
+    <logger name="org.springframework.security" level="DEBUG"/>
+    <logger name="org.hibernate.SQL" level="DEBUG"/>
+    <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="TRACE"/>
+
+</configuration>

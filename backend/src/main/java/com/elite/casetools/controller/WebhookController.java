@@ -2,10 +2,12 @@ package com.elite.casetools.controller;
 
 import com.elite.casetools.dto.GrafanaWebhookRequest;
 import com.elite.casetools.dto.WebhookResponse;
+import com.elite.casetools.dto.AssignmentInfo;
 import com.elite.casetools.entity.Case;
+import com.elite.casetools.entity.User;
 import com.elite.casetools.service.CaseService;
 import com.elite.casetools.service.ImprovedWebhookService;
-import com.elite.casetools.service.AlertService;
+import com.elite.casetools.repository.UserRepository;
 import com.elite.casetools.exception.WebhookProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
@@ -39,7 +41,7 @@ public class WebhookController {
 
     private final CaseService caseService;
     private final ImprovedWebhookService improvedWebhookService;
-    private final AlertService alertService;
+    private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
 
     @Value("${grafana.webhook.secret:}")
@@ -60,10 +62,8 @@ public class WebhookController {
             // Parse the JSON payload
             GrafanaWebhookRequest request = objectMapper.readValue(rawPayload, GrafanaWebhookRequest.class);
             
-            // First, process alert in alert history
-            alertService.processGrafanaAlert(request);
-            
-            // Use the improved webhook service with rule assignments
+            // Use the improved webhook service which handles both alert history and case creation
+            // Alert history is created inside processWebhookWithRuleAssignments for each alert
             List<Case> processedCases = improvedWebhookService.processWebhookWithRuleAssignments(request);
             
             return ResponseEntity.ok(WebhookResponse.success(
@@ -184,12 +184,27 @@ public class WebhookController {
                 .caseNumber(caseEntity.getCaseNumber())
                 .alertFingerprint(caseEntity.getGrafanaAlertUid())
                 .status(caseEntity.getStatus().toString())
-                .assignedTo(caseEntity.getAssignedTo() != null ? 
-                           WebhookResponse.UserInfo.builder()
-                                   .userId(caseEntity.getAssignedTo().getId())
-                                   .name(caseEntity.getAssignedTo().getName())
-                                   .build() : null)
+                .assignedTo(getAssignedUserInfo(caseEntity))
                 .createdAt(caseEntity.getCreatedAt())
                 .build();
+    }
+    
+    /**
+     * Helper method to get first assigned user info for webhook response
+     */
+    private WebhookResponse.UserInfo getAssignedUserInfo(Case caseEntity) {
+        AssignmentInfo assignmentInfo = caseEntity.getAssignmentInfo();
+        if (!assignmentInfo.hasAssignments() || assignmentInfo.getUserIds().isEmpty()) {
+            return null;
+        }
+        
+        // Return the first assigned user
+        Long firstUserId = assignmentInfo.getUserIds().get(0);
+        return userRepository.findById(firstUserId)
+                .map(user -> WebhookResponse.UserInfo.builder()
+                        .userId(user.getId())
+                        .name(user.getName())
+                        .build())
+                .orElse(null);
     }
 }

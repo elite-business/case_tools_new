@@ -40,9 +40,10 @@ public interface AlertHistoryRepository extends JpaRepository<AlertHistory, Long
     Page<AlertHistory> findBySeverity(AlertHistory.AlertSeverity severity, Pageable pageable);
 
     /**
-     * Find by assigned user
+     * Find alerts by assigned user - using JSON contains
      */
-    Page<AlertHistory> findByAssignedToId(Long userId, Pageable pageable);
+    @Query("SELECT a FROM AlertHistory a WHERE CAST(a.assignedTo AS string) LIKE CONCAT('%\"userIds\":[%', :userId, '%]%')")
+    Page<AlertHistory> findByAssignedUserId(@Param("userId") Long userId, Pageable pageable);
 
     /**
      * Find alerts created between dates
@@ -78,18 +79,20 @@ public interface AlertHistoryRepository extends JpaRepository<AlertHistory, Long
     long countBySeverity(AlertHistory.AlertSeverity severity);
     
     /**
-     * Count alerts by assigned user and status
+     * Count alerts by assigned user and status - using JSON contains
      */
-    long countByAssignedToAndStatusIn(com.elite.casetools.entity.User assignedTo, List<AlertHistory.AlertStatus> statuses);
+    @Query("SELECT COUNT(a) FROM AlertHistory a WHERE CAST(a.assignedTo AS string) LIKE CONCAT('%\"userIds\":[%', :userId, '%]%') AND a.status IN :statuses")
+    long countByAssignedUserAndStatusIn(@Param("userId") Long userId, @Param("statuses") List<AlertHistory.AlertStatus> statuses);
     
     /**
-     * Find alerts by assigned user and status
+     * Find alerts by assigned user and status - using JSON contains
      */
-    List<AlertHistory> findByAssignedToAndStatusIn(com.elite.casetools.entity.User assignedTo, List<AlertHistory.AlertStatus> statuses);
+    @Query("SELECT a FROM AlertHistory a WHERE CAST(a.assignedTo AS string) LIKE CONCAT('%\"userIds\":[%', :userId, '%]%') AND a.status IN :statuses")
+    List<AlertHistory> findByAssignedUserAndStatusIn(@Param("userId") Long userId, @Param("statuses") List<AlertHistory.AlertStatus> statuses);
     
     /**
-     * Find recent alerts for user
+     * Find recent alerts for user - using JSON contains
      */
-    @Query("SELECT a FROM AlertHistory a WHERE a.assignedTo.id = :userId ORDER BY a.createdAt DESC")
+    @Query("SELECT a FROM AlertHistory a WHERE CAST(a.assignedTo AS string) LIKE CONCAT('%\"userIds\":[%', :userId, '%]%') ORDER BY a.createdAt DESC")
     List<AlertHistory> findRecentAlertsForUser(@Param("userId") Long userId, Pageable pageable);
 }

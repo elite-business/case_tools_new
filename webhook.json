@@ -4,51 +4,38 @@
   "alerts": [
     {
       "status": "firing",
-      "labels": {
-        "alertname": "High Revenue Loss Detection",
-        "alertuid": "grafana-rule-uid-001",
-        "rule_id": "revenue_loss_rule_001",
-        "severity": "critical",
-        "category": "revenue_assurance",
-        "grafana_folder": "Revenue Monitoring"
-      },
       "annotations": {
-        "summary": "Critical revenue loss detected in MSC traffic",
-        "description": "Total revenue loss of $25,450.75 detected in MSC traffic over the last hour. This exceeds the threshold of $10,000.",
-    "startsAt" : "2026-01-05T18:48:20Z",
-    "endsAt" : "0001-01-01T00:00:00Z",
-    "generatorURL" : "http://localhost:9000/alerting/grafana/cf99ucctep3i8b/view?orgId=1",
-    "fingerprint" : "28c0a3004aabc922",
-    "silenceURL" : "http://localhost:9000/alerting/silence/new?alertmanager=grafana&matcher=__alert_rule_uid__%3Dcf99ucctep3i8b&orgId=1",
-    "dashboardURL" : "",
-    "panelURL" : "",
-    "values" : {
-      "B" : 172,
-      "C" : 1
+        "summary": "Instance instance1 has been down for more than 5 minutes",
+        "description": "The instance instance1 has been unreachable for more than 5 minutes, indicating a potential service outage."
+      },
+      "labels": {
+        "alertname": "InstanceDown",
+        "instance": "instance1",
+        "severity": "critical",
+        "service": "service1",
+        "environment": "production"
+      },
+      "startsAt": "2026-01-07T09:45:47.926Z",
+      "endsAt": "2026-01-08T09:50:47.926Z",
+      "fingerprint": "a5331f0d5a9d81d4",
+      "generatorURL": "http://grafana.com/alerting/grafana/cf99ucctep3i8b/view"
     },
-    "valueString" : "[ var='B' labels={} value=172 ], [ var='C' labels={} value=1 ]",
-    "orgId" : 1
-  }, {
-    "status" : "firing",
-    "labels" : {
-      "alertname" : "Development Alerts",
-      "grafana_folder" : "test_webhook"
-    },
-    "annotations" : { },
-    "startsAt" : "2026-01-08T01:56:20+01:00",
-    "endsAt" : "0001-01-01T00:00:00Z",
-    "generatorURL" : "http://localhost:9000/alerting/grafana/ef9i2jiilmeiof/view?orgId=1",
-    "fingerprint" : "dff36639fe3a1b6a",
-    "silenceURL" : "http://localhost:9000/alerting/silence/new?alertmanager=grafana&matcher=__alert_rule_uid__%3Def9i2jiilmeiof&orgId=1",
-    "dashboardURL" : "",
-    "panelURL" : "",
-    "values" : {
-      "B" : 172,
-      "C" : 1
-    },
-    "valueString" : "[ var='B' labels={} value=172 ], [ var='C' labels={} value=1 ]",
-    "orgId" : 1
-  } ],
+    {
+      "status": "firing",
+      "annotations": {
+        "description": "\"Test alert for development\"",
+        "summary": "\"[no value] alerts in last 5 minutes\""
+      },
+      "labels": {
+        "alertname": "Development Alerts",
+        "grafana_folder": "test_webhook"
+      },
+      "startsAt": "2026-01-05T18:48:20.000Z",
+      "endsAt": "2026-01-08T12:30:20.000+01:00",
+      "generatorURL": "http://localhost:9000/alerting/grafana/cf99ucctep3i8b/view",
+      "fingerprint": "28c0a3004aabc922"
+    }
+  ],
   "groupLabels" : {
     "alertname" : "Development Alerts",
     "grafana_folder" : "test_webhook"

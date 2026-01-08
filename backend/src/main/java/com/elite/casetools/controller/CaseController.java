@@ -2,6 +2,7 @@ package com.elite.casetools.controller;
 
 import com.elite.casetools.dto.*;
 import com.elite.casetools.entity.*;
+import com.elite.casetools.repository.UserRepository;
 import com.elite.casetools.service.CaseService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -19,6 +20,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -32,6 +34,7 @@ import java.util.List;
 public class CaseController {
 
     private final CaseService caseService;
+    private final UserRepository userRepository;
 
     /**
      * Get all cases with pagination and filtering
@@ -236,12 +239,8 @@ public class CaseController {
                 .severity(caseEntity.getSeverity().name())
                 .priority(caseEntity.getPriority())
                 .category(caseEntity.getCategory().name())
-                .assignedTo(caseEntity.getAssignedTo() != null ? 
-                    UserSummaryDto.builder()
-                        .id(caseEntity.getAssignedTo().getId())
-                        .name(caseEntity.getAssignedTo().getName())
-                        .email(caseEntity.getAssignedTo().getEmail())
-                        .build() : null)
+                .assignedUsers(getAssignedUsers(caseEntity))
+                .assignedTeams(getAssignedTeams(caseEntity))
                 .assignedBy(caseEntity.getAssignedBy() != null ?
                     UserSummaryDto.builder()
                         .id(caseEntity.getAssignedBy().getId())
@@ -303,5 +302,40 @@ public class CaseController {
                     .build())
                 .createdAt(activity.getCreatedAt())
                 .build();
+    }
+
+    /**
+     * Get assigned users for a case
+     */
+    private List<UserSummaryDto> getAssignedUsers(Case caseEntity) {
+        if (caseEntity.getAssignmentInfo() == null || !caseEntity.getAssignmentInfo().hasAssignments()) {
+            return new ArrayList<>();
+        }
+        
+        List<UserSummaryDto> assignedUsers = new ArrayList<>();
+        for (Long userId : caseEntity.getAssignmentInfo().getUserIds()) {
+            userRepository.findById(userId).ifPresent(user -> 
+                assignedUsers.add(UserSummaryDto.builder()
+                    .id(user.getId())
+                    .name(user.getName())
+                    .email(user.getEmail())
+                    .build())
+            );
+        }
+        return assignedUsers;
+    }
+
+    /**
+     * Get assigned teams for a case
+     */
+    private List<TeamSummaryDto> getAssignedTeams(Case caseEntity) {
+        if (caseEntity.getAssignmentInfo() == null || !caseEntity.getAssignmentInfo().hasAssignments()) {
+            return new ArrayList<>();
+        }
+        
+        List<TeamSummaryDto> assignedTeams = new ArrayList<>();
+        // TODO: Implement team lookup when Team entity is available
+        // For now, return empty list as teams are not yet implemented
+        return assignedTeams;
     }
 }

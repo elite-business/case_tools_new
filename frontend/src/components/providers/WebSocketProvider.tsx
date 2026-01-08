@@ -61,10 +61,33 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 
   useEffect(() => {
     if (isAuthenticated && user) {
+      // Clear any existing notifications when user changes
+      setNotifications([]);
+      setUnreadCount(0);
+      
       const token = Cookies.get('token');
       if (token) {
-        // Connect to WebSocket
-        webSocketService.connect(user.id.toString(), token);
+        // Fetch user's team memberships
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/me/teams`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+        .then(res => res.json())
+        .then(teamIds => {
+          // Connect to WebSocket with user roles and team IDs
+          webSocketService.connect(
+            user.id.toString(), 
+            token, 
+            user.roles,
+            teamIds.map((id: number) => id.toString())
+          );
+        })
+        .catch(err => {
+          console.warn('Failed to fetch user teams, connecting without team channels:', err);
+          // Connect without teams if fetch fails
+          webSocketService.connect(user.id.toString(), token, user.roles, []);
+        });
         
         // Request notification permission
         if ('Notification' in window && Notification.permission === 'default') {
@@ -99,11 +122,16 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
           webSocketService.disconnect();
         };
       }
+    } else {
+      // User logged out, clear notifications
+      setNotifications([]);
+      setUnreadCount(0);
+      webSocketService.disconnect();
     }
   }, [isAuthenticated, user]);
 
   const handleNewNotification = (notification: WebSocketNotification) => {
-    setNotifications((prev) => [notification, ...prev].slice(0, 100)); // Keep last 100 notifications
+    setNotifications((prev) => [notification, ...prev].slice(0, 100));
     setUnreadCount((prev) => prev + 1);
     
     // Update badge in document title
