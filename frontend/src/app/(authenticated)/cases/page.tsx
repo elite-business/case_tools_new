@@ -52,6 +52,7 @@ import FilterBar, { FilterConfig } from '@/components/ui-system/FilterBar';
 import StatusIndicator from '@/components/ui-system/StatusIndicator';
 import ActionDropdown, { CommonActions } from '@/components/ui-system/ActionDropdown';
 import MetricsCard from '@/components/ui-system/MetricsCard';
+import { useAuthStore } from '@/store/auth-store';
 import dayjs from 'dayjs';
 
 const { confirm } = Modal;
@@ -66,6 +67,17 @@ export default function CasesPage() {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [filters, setFilters] = useState<CaseFilters>({});
   const [showFilters, setShowFilters] = useState(false);
+
+  // Get user role
+  const { user } = useAuthStore();
+  const userRole = user?.role || (user?.roles && user.roles[0]) || 'VIEWER';
+  const isAdmin = userRole === 'ADMIN' || userRole === 'ROLE_ADMIN';
+  const isManager = userRole === 'MANAGER' || userRole === 'ROLE_MANAGER';
+  const isAnalyst = userRole === 'ANALYST' || userRole === 'ROLE_ANALYST';
+  const canCreateCase = isAdmin || isManager || isAnalyst;
+  const canEditCase = isAdmin || isManager;
+  const canDeleteCase = isAdmin;
+  const canAssignCase = isAdmin || isManager;
 
   // Fetch available users for assignment
   const { data: users } = useQuery({
@@ -389,36 +401,53 @@ export default function CasesPage() {
       render: (_, record: Case) => {
         const isClosedOrCancelled = record.status === 'CLOSED' || record.status === 'CANCELLED';
         
+        // Build actions based on user permissions
+        const actions = [
+          {
+            ...CommonActions.view,
+            onClick: () => router.push(`/cases/${record.id}`),
+          },
+        ];
+
+        // Add edit action if user has permission
+        if (canEditCase) {
+          actions.push({
+            ...CommonActions.edit,
+            onClick: () => router.push(`/cases/${record.id}?mode=edit`),
+            disabled: isClosedOrCancelled,
+          });
+        }
+
+        // Add assign action if user has permission
+        if (canAssignCase) {
+          actions.push({
+            ...CommonActions.assign,
+            disabled: isClosedOrCancelled,
+            onClick: () => {
+              setSelectedCase(record);
+              setAssignModalVisible(true);
+            },
+          });
+        }
+
+        // Add close action if user has edit permission
+        if (canEditCase) {
+          actions.push(
+            {
+              ...CommonActions.divider,
+            },
+            {
+              ...CommonActions.close,
+              disabled: isClosedOrCancelled,
+              onClick: () => handleClose(record),
+              badge: record.severity === 'CRITICAL' ? '!' : undefined,
+            }
+          );
+        }
+        
         return (
           <ActionDropdown
-            items={[
-              {
-                ...CommonActions.view,
-                onClick: () => router.push(`/cases/${record.id}`),
-              },
-              {
-                ...CommonActions.edit,
-                onClick: () => router.push(`/cases/${record.id}?mode=edit`),
-                disabled: isClosedOrCancelled,
-              },
-              {
-                ...CommonActions.assign,
-                disabled: isClosedOrCancelled,
-                onClick: () => {
-                  setSelectedCase(record);
-                  setAssignModalVisible(true);
-                },
-              },
-              {
-                ...CommonActions.divider,
-              },
-              {
-                ...CommonActions.close,
-                disabled: isClosedOrCancelled,
-                onClick: () => handleClose(record),
-                badge: record.severity === 'CRITICAL' ? '!' : undefined,
-              },
-            ]}
+            items={actions}
             placement="bottomRight"
             size="small"
           />
@@ -528,12 +557,16 @@ export default function CasesPage() {
               message={
                 <Space>
                   <Text strong>{selectedRowKeys.length} cases selected</Text>
-                  <Button size="small" icon={<UserAddOutlined />} onClick={() => handleBulkAction('assign')}>
-                    Bulk Assign
-                  </Button>
-                  <Button size="small" icon={<CheckCircleOutlined />} onClick={() => handleBulkAction('close')}>
-                    Bulk Close
-                  </Button>
+                  {canAssignCase && (
+                    <Button size="small" icon={<UserAddOutlined />} onClick={() => handleBulkAction('assign')}>
+                      Bulk Assign
+                    </Button>
+                  )}
+                  {canEditCase && (
+                    <Button size="small" icon={<CheckCircleOutlined />} onClick={() => handleBulkAction('close')}>
+                      Bulk Close
+                    </Button>
+                  )}
                   <Button size="small" icon={<ExportOutlined />} onClick={() => handleBulkAction('export')}>
                     Export
                   </Button>
@@ -584,14 +617,16 @@ export default function CasesPage() {
           >
             Export {selectedRowKeys.length > 0 ? `(${selectedRowKeys.length})` : ''}
           </Button>,
-          <Button 
-            key="create" 
-            type="primary" 
-            icon={<PlusOutlined />}
-            onClick={() => router.push('/cases/new')}
-          >
-            New Case
-          </Button>,
+          ...(canCreateCase ? [
+            <Button 
+              key="create" 
+              type="primary" 
+              icon={<PlusOutlined />}
+              onClick={() => router.push('/cases/new')}
+            >
+              New Case
+            </Button>
+          ] : []),
         ]}
       >
         <motion.div
@@ -609,6 +644,13 @@ export default function CasesPage() {
                   size: params.pageSize || 10,
                   search: params.title || filters.search || '',
                 };
+
+                // For non-admin/non-manager users, filter to only show their assigned cases
+                if (!isAdmin && !isManager && user?.id) {
+                  queryParams.assignedToId = user.id;
+                  // Also include cases assigned to user's teams
+                  queryParams.includeTeamCases = true;
+                }
 
                 // Apply filters
                 if (filters.status) queryParams.status = filters.status.join(',');

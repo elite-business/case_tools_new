@@ -46,6 +46,7 @@ import type { ProColumns } from '@ant-design/pro-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { alertsApi, handleApiError } from '@/lib/api-client';
 import { AlertHistory, AlertFilters, AlertSeverity, AlertStatus } from '@/lib/types';
+import { useAuthStore } from '@/store/auth-store';
 import dayjs from 'dayjs';
 
 const { RangePicker } = DatePicker;
@@ -80,14 +81,29 @@ export default function AlertHistoryPage() {
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
   const queryClient = useQueryClient();
 
-  // Fetch alert history
+  // Get user role
+  const { user } = useAuthStore();
+  const userRole = user?.role || (user?.roles && user.roles[0]) || 'VIEWER';
+  const isAdmin = userRole === 'ADMIN' || userRole === 'ROLE_ADMIN';
+  const isManager = userRole === 'MANAGER' || userRole === 'ROLE_MANAGER';
+  const canAcknowledgeAlert = isAdmin || isManager;
+  const canResolveAlert = isAdmin || isManager;
+
+  // Fetch alert history with role-based filtering
   const {
     data: historyData,
     isLoading,
     error,
   } = useQuery({
     queryKey: ['alertHistory', filters],
-    queryFn: () => alertsApi.getHistory(filters),
+    queryFn: () => {
+      // For non-admin/non-manager users, filter to only show their assigned alerts
+      const queryFilters = { ...filters };
+      if (!isAdmin && !isManager && user?.id) {
+        queryFilters.assignedToId = user.id;
+      }
+      return alertsApi.getHistory(queryFilters);
+    },
     select: (response) => response.data,
   });
 
@@ -253,7 +269,7 @@ export default function AlertHistoryPage() {
             }}
             title="View Details"
           />
-          {record.status === 'OPEN' && (
+          {canAcknowledgeAlert && record.status === 'OPEN' && (
             <Button
               type="text"
               icon={<CheckOutlined />}
@@ -262,7 +278,7 @@ export default function AlertHistoryPage() {
               style={{ color: '#faad14' }}
             />
           )}
-          {['OPEN', 'ACKNOWLEDGED'].includes(record.status) && (
+          {canResolveAlert && ['OPEN', 'ACKNOWLEDGED'].includes(record.status) && (
             <Button
               type="text"
               icon={<CloseOutlined />}
@@ -532,10 +548,10 @@ export default function AlertHistoryPage() {
             )}
 
             {/* Actions */}
-            {['OPEN', 'ACKNOWLEDGED'].includes(selectedAlert.status) && (
+            {['OPEN', 'ACKNOWLEDGED'].includes(selectedAlert.status) && (canAcknowledgeAlert || canResolveAlert) && (
               <Card title="Actions" size="small">
                 <Space>
-                  {selectedAlert.status === 'OPEN' && (
+                  {canAcknowledgeAlert && selectedAlert.status === 'OPEN' && (
                     <Button
                       type="primary"
                       icon={<CheckOutlined />}
@@ -547,17 +563,19 @@ export default function AlertHistoryPage() {
                       Acknowledge
                     </Button>
                   )}
-                  <Button
-                    type="primary"
-                    danger
-                    icon={<CloseOutlined />}
-                    onClick={() => {
-                      resolveMutation.mutate(selectedAlert.id);
-                      setDrawerOpen(false);
-                    }}
-                  >
-                    Resolve
-                  </Button>
+                  {canResolveAlert && (
+                    <Button
+                      type="primary"
+                      danger
+                      icon={<CloseOutlined />}
+                      onClick={() => {
+                        resolveMutation.mutate(selectedAlert.id);
+                        setDrawerOpen(false);
+                      }}
+                    >
+                      Resolve
+                    </Button>
+                  )}
                 </Space>
               </Card>
             )}

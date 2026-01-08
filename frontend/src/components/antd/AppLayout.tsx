@@ -94,118 +94,139 @@ export default function AppLayout({ children }: AppLayoutProps) {
     router.push('/login');
   };
 
-  // Menu items configuration
-  const menuItems: MenuProps['items'] = [
-    {
-      key: '/dashboard',
-      icon: <DashboardOutlined />,
-      label: 'Dashboard',
-      onClick: () => router.push('/dashboard'),
-    },
-    {
-      key: 'cases-menu',
-      icon: <FileProtectOutlined />,
-      label: 'Cases',
-      children: [
-        {
-          key: '/cases',
-          label: 'All Cases',
-          onClick: () => router.push('/cases'),
-        },
-        {
-          key: '/cases/active',
-          label: 'Active Cases',
-          onClick: () => router.push('/cases/active'),
-        },
-        {
-          key: '/cases/my-cases',
-          label: 'My Cases',
-          onClick: () => router.push('/cases/my-cases'),
-        },
-        {
-          key: '/cases/resolved',
-          label: 'Resolved Cases',
-          onClick: () => router.push('/cases/resolved'),
-        },
-        {
-          key: '/cases/new',
-          label: 'Create New Case',
-          onClick: () => router.push('/cases/new'),
-        },
-      ],
-    },
-    {
-      key: 'alerts-menu',
-      icon: <AlertOutlined />,
-      label: 'Alerts',
-      children: [
-        {
-          key: '/alerts/rules',
-          label: 'Alert Rules',
-          onClick: () => router.push('/alerts/rules'),
-        },
-        {
-          key: '/alerts/history',
-          label: 'Alert History',
-          onClick: () => router.push('/alerts/history'),
-        },
-        {
-          key: '/alerts/builder',
-          label: 'Rule Builder',
-          onClick: () => router.push('/alerts/builder'),
-        },
-      ],
-    },
-    {
-      key: 'analytics-menu',
-      icon: <BarChartOutlined />,
-      label: 'Analytics',
-      children: [
-        {
-          key: '/analytics/overview',
-          label: 'Overview',
-          onClick: () => router.push('/analytics/overview'),
-        },
-        {
-          key: '/analytics/trends',
-          label: 'Trends',
-          onClick: () => router.push('/analytics/trends'),
-        },
-        {
-          key: '/analytics/reports',
-          label: 'Reports',
-          onClick: () => router.push('/analytics/reports'),
-        },
-      ],
-    },
-    {
-      key: 'admin-menu',
-      icon: <SettingOutlined />,
-      label: 'Administration',
-      children: [
-        {
-          key: '/admin/users',
-          label: 'Users',
-          onClick: () => router.push('/admin/users'),
-        },
-        {
-          key: '/admin/teams',
-          label: 'Teams',
-          onClick: () => router.push('/admin/teams'),
-        },
-        {
-          key: '/admin/system',
-          label: 'System Settings',
-          onClick: () => router.push('/admin/system'),
-        },
-        {
-          key: '/admin/grafana',
-          label: 'Grafana Integration',
-          onClick: () => router.push('/admin/grafana'),
-        },
-      ],
-    },
-  ];
+  // Check user role - support both role string and roles array
+  const userRole = user?.role || (user?.roles && user.roles[0]) || 'VIEWER';
+  const isAdmin = userRole === 'ADMIN' || userRole === 'ROLE_ADMIN';
+  const isManager = userRole === 'MANAGER' || userRole === 'ROLE_MANAGER';
+  const isAnalyst = userRole === 'ANALYST' || userRole === 'ROLE_ANALYST';
+
+  // Build menu items based on user role
+  const buildMenuItems = (): MenuProps['items'] => {
+    const items: MenuProps['items'] = [
+      {
+        key: '/dashboard',
+        icon: <DashboardOutlined />,
+        label: 'Dashboard',
+        onClick: () => router.push('/dashboard'),
+      },
+      {
+        key: 'cases-menu',
+        icon: <FileProtectOutlined />,
+        label: 'Cases',
+        children: [
+          // My Cases - visible to all users
+          {
+            key: '/cases/my-cases',
+            label: 'My Cases',
+            onClick: () => router.push('/cases/my-cases'),
+          },
+          // All Cases - only for admins and managers
+          ...(isAdmin || isManager ? [{
+            key: '/cases',
+            label: 'All Cases',
+            onClick: () => router.push('/cases'),
+          }] : []),
+          {
+            key: '/cases/active',
+            label: 'Active Cases',
+            onClick: () => router.push('/cases/active'),
+          },
+          {
+            key: '/cases/resolved',
+            label: 'Resolved Cases',
+            onClick: () => router.push('/cases/resolved'),
+          },
+          // Create New Case - only for admins, managers, and analysts
+          ...(isAdmin || isManager || isAnalyst ? [{
+            key: '/cases/new',
+            label: 'Create New Case',
+            onClick: () => router.push('/cases/new'),
+          }] : []),
+        ],
+      },
+      {
+        key: 'alerts-menu',
+        icon: <AlertOutlined />,
+        label: 'Alerts',
+        children: [
+          {
+            key: '/alerts/history',
+            label: 'Alert History',
+            onClick: () => router.push('/alerts/history'),
+          },
+          // Alert Rules - visible to all but with different permissions
+          {
+            key: '/alerts/rules',
+            label: 'Alert Rules',
+            onClick: () => router.push('/alerts/rules'),
+          },
+          // Rule Builder - ONLY for admins
+          ...(isAdmin ? [{
+            key: '/alerts/builder',
+            label: 'Rule Builder',
+            onClick: () => router.push('/alerts/builder'),
+          }] : []),
+        ],
+      },
+      {
+        key: 'analytics-menu',
+        icon: <BarChartOutlined />,
+        label: 'Analytics',
+        children: [
+          {
+            key: '/analytics/overview',
+            label: 'Overview',
+            onClick: () => router.push('/analytics/overview'),
+          },
+          ...(isAdmin || isManager ? [
+            {
+              key: '/analytics/trends',
+              label: 'Trends',
+              onClick: () => router.push('/analytics/trends'),
+            },
+            {
+              key: '/analytics/reports',
+              label: 'Reports',
+              onClick: () => router.push('/analytics/reports'),
+            },
+          ] : []),
+        ],
+      },
+    ];
+
+    // Administration menu - ONLY for admins
+    if (isAdmin) {
+      items.push({
+        key: 'admin-menu',
+        icon: <SettingOutlined />,
+        label: 'Administration',
+        children: [
+          {
+            key: '/admin/users',
+            label: 'Users',
+            onClick: () => router.push('/admin/users'),
+          },
+          {
+            key: '/admin/teams',
+            label: 'Teams',
+            onClick: () => router.push('/admin/teams'),
+          },
+          {
+            key: '/admin/system',
+            label: 'System Settings',
+            onClick: () => router.push('/admin/system'),
+          },
+          {
+            key: '/admin/grafana',
+            label: 'Grafana Integration',
+            onClick: () => router.push('/admin/grafana'),
+          },
+        ],
+      });
+    }
+
+    return items;
+  };
 
   // User dropdown menu
   const userMenuItems: MenuProps['items'] = [
@@ -329,7 +350,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
             mode="inline"
             selectedKeys={[pathname]}
             defaultOpenKeys={['/cases', '/alerts']}
-            items={menuItems}
+            items={buildMenuItems()}
             style={{ borderRight: 0 }}
             onClick={() => setMobileCollapsed(true)}
           />
@@ -409,7 +430,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
           mode="inline"
           selectedKeys={[pathname]}
           defaultOpenKeys={['/cases', '/alerts']}
-          items={menuItems}
+          items={buildMenuItems()}
           style={{ borderRight: 0 }}
         />
         </Sider>

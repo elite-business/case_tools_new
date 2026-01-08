@@ -141,7 +141,7 @@ public class CaseController {
      * Get case comments
      */
     @GetMapping("/{id}/comments")
-    @PreAuthorize("hasAnyRole('USER', 'ADMIN', 'MANAGER', 'ANALYST')")
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN', 'MANAGER', 'ANALYST','VIEWER')")
     @Operation(summary = "Get case comments")
     public ResponseEntity<List<CaseCommentResponse>> getCaseComments(@PathVariable Long id) {
         Case caseEntity = caseService.getCaseById(id);
