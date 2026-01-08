@@ -51,7 +51,7 @@ public class WebhookController {
     @PostMapping("/grafana/alert")
     @Operation(summary = "Receive Grafana alert webhook", description = "Process incoming alerts from Grafana and create cases")
     public ResponseEntity<WebhookResponse> handleGrafanaAlert(
-            @RequestHeader(value = "X-Grafana-Signature", required = false) String signature,
+            @RequestHeader(value = "X-Grafana-Alerting-Signature", required = false) String signature,
             @RequestBody String rawPayload) {
         
         log.info("Received Grafana alert webhook with {} bytes", rawPayload.length());

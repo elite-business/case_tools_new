@@ -106,10 +106,7 @@ const MetricsCard: React.FC<MetricsCardProps> = ({
           height: '100%',
           border: `1px solid #f0f0f0`,
           borderRadius: 8,
-        }}
-        bodyStyle={{ 
           padding: '20px 24px',
-          height: '100%',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between'

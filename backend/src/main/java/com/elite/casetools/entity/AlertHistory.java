@@ -72,9 +72,8 @@ public class AlertHistory extends BaseEntity {
     @Column(name = "resolve_notes", columnDefinition = "TEXT")
     private String resolveNotes;
 
-    @Column(name = "tags", columnDefinition = "text[]")
-    @Convert(converter = StringArrayConverter.class)
-    private String[] tags;
+    @Column(name = "tags")
+    private String tags;
 
     @Column(name = "custom_fields", columnDefinition = "TEXT")
     private String customFields;

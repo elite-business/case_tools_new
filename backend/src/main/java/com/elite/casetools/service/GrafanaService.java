@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.client.HttpClientErrorException;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.List;
@@ -247,17 +248,167 @@ public class GrafanaService {
     }
     
     private GrafanaAlertRuleResponse mapToAlertRuleResponse(JsonNode ruleNode) {
-        return GrafanaAlertRuleResponse.builder()
-            .uid(ruleNode.has("uid") ? ruleNode.get("uid").asText() : null)
-            .title(ruleNode.has("title") ? ruleNode.get("title").asText() : null)
-            .folderUID(ruleNode.has("folderUID") ? ruleNode.get("folderUID").asText() : null)
-            .ruleGroup(ruleNode.has("ruleGroup") ? ruleNode.get("ruleGroup").asText() : null)
-            .condition(ruleNode.has("condition") ? ruleNode.get("condition").asText() : null)
-            .for_(ruleNode.has("for") ? ruleNode.get("for").asText() : null)
-            .noDataState(ruleNode.has("noDataState") ? ruleNode.get("noDataState").asInt() : null)
-            .execErrState(ruleNode.has("execErrState") ? ruleNode.get("execErrState").asInt() : null)
-            .isPaused(ruleNode.has("isPaused") ? ruleNode.get("isPaused").asBoolean() : false)
-            .build();
+        GrafanaAlertRuleResponse.GrafanaAlertRuleResponseBuilder builder = GrafanaAlertRuleResponse.builder();
+        
+        // Basic fields
+        builder.id(ruleNode.has("id") ? ruleNode.get("id").asLong() : null);
+        builder.uid(ruleNode.has("uid") ? ruleNode.get("uid").asText() : null);
+        builder.orgID(ruleNode.has("orgID") ? ruleNode.get("orgID").asLong() : null);
+        builder.title(ruleNode.has("title") ? ruleNode.get("title").asText() : null);
+        builder.folderUID(ruleNode.has("folderUID") ? ruleNode.get("folderUID").asText() : null);
+        builder.folderTitle(ruleNode.has("folderTitle") ? ruleNode.get("folderTitle").asText() : null);
+        builder.ruleGroup(ruleNode.has("ruleGroup") ? ruleNode.get("ruleGroup").asText() : null);
+        builder.condition(ruleNode.has("condition") ? ruleNode.get("condition").asText() : null);
+        
+        // Alert timing
+        builder.for_(ruleNode.has("for") ? ruleNode.get("for").asText() : null);
+        builder.keepFiringFor(ruleNode.has("keep_firing_for") ? ruleNode.get("keep_firing_for").asText() : null);
+        
+        // Alert states
+        builder.noDataState(ruleNode.has("noDataState") ? ruleNode.get("noDataState").asText() : null);
+        builder.execErrState(ruleNode.has("execErrState") ? ruleNode.get("execErrState").asText() : null);
+        
+        // Status
+        builder.isPaused(ruleNode.has("isPaused") ? ruleNode.get("isPaused").asBoolean() : false);
+        
+        // Timestamps
+        if (ruleNode.has("updated")) {
+            try {
+                builder.updated(LocalDateTime.parse(ruleNode.get("updated").asText().substring(0, 19)));
+            } catch (Exception e) {
+                // Skip if parsing fails
+            }
+        }
+        
+        // Parse data array with queries and conditions
+        if (ruleNode.has("data") && ruleNode.get("data").isArray()) {
+            List<GrafanaAlertRuleResponse.GrafanaRuleData> dataList = new ArrayList<>();
+            for (JsonNode dataNode : ruleNode.get("data")) {
+                GrafanaAlertRuleResponse.GrafanaRuleData data = parseRuleData(dataNode);
+                if (data != null) {
+                    dataList.add(data);
+                }
+            }
+            builder.data(dataList);
+        }
+        
+        // Parse annotations
+        if (ruleNode.has("annotations") && ruleNode.get("annotations").isObject()) {
+            Map<String, String> annotations = new HashMap<>();
+            ruleNode.get("annotations").fields().forEachRemaining(entry -> {
+                annotations.put(entry.getKey(), entry.getValue().asText());
+            });
+            builder.annotations(annotations);
+        }
+        
+        // Parse labels
+        if (ruleNode.has("labels") && ruleNode.get("labels").isObject()) {
+            Map<String, String> labels = new HashMap<>();
+            ruleNode.get("labels").fields().forEachRemaining(entry -> {
+                labels.put(entry.getKey(), entry.getValue().asText());
+            });
+            builder.labels(labels);
+        }
+        
+        // Parse notification settings
+        if (ruleNode.has("notification_settings") && ruleNode.get("notification_settings").isObject()) {
+            Map<String, Object> notificationSettings = new HashMap<>();
+            ruleNode.get("notification_settings").fields().forEachRemaining(entry -> {
+                notificationSettings.put(entry.getKey(), entry.getValue().asText());
+            });
+            builder.notificationSettings(notificationSettings);
+        }
+        
+        builder.record(ruleNode.has("record") ? ruleNode.get("record").asText() : null);
+        
+        return builder.build();
+    }
+    
+    private GrafanaAlertRuleResponse.GrafanaRuleData parseRuleData(JsonNode dataNode) {
+        if (dataNode == null) {
+            return null;
+        }
+        
+        GrafanaAlertRuleResponse.GrafanaRuleData.GrafanaRuleDataBuilder builder = 
+            GrafanaAlertRuleResponse.GrafanaRuleData.builder();
+        
+        builder.refId(dataNode.has("refId") ? dataNode.get("refId").asText() : null);
+        builder.queryType(dataNode.has("queryType") ? dataNode.get("queryType").asText() : null);
+        builder.datasourceUid(dataNode.has("datasourceUid") ? dataNode.get("datasourceUid").asText() : null);
+        
+        // Parse relative time range
+        if (dataNode.has("relativeTimeRange") && dataNode.get("relativeTimeRange").isObject()) {
+            Map<String, Integer> timeRange = new HashMap<>();
+            JsonNode rangeNode = dataNode.get("relativeTimeRange");
+            if (rangeNode.has("from")) {
+                timeRange.put("from", rangeNode.get("from").asInt());
+            }
+            if (rangeNode.has("to")) {
+                timeRange.put("to", rangeNode.get("to").asInt());
+            }
+            builder.relativeTimeRange(timeRange);
+        }
+        
+        // Parse model
+        if (dataNode.has("model") && dataNode.get("model").isObject()) {
+            GrafanaAlertRuleResponse.GrafanaRuleModel model = parseRuleModel(dataNode.get("model"));
+            builder.model(model);
+        }
+        
+        return builder.build();
+    }
+    
+    private GrafanaAlertRuleResponse.GrafanaRuleModel parseRuleModel(JsonNode modelNode) {
+        if (modelNode == null) {
+            return null;
+        }
+        
+        GrafanaAlertRuleResponse.GrafanaRuleModel.GrafanaRuleModelBuilder builder = 
+            GrafanaAlertRuleResponse.GrafanaRuleModel.builder();
+        
+        // SQL query fields
+        builder.rawSql(modelNode.has("rawSql") ? modelNode.get("rawSql").asText() : null);
+        builder.dataset(modelNode.has("dataset") ? modelNode.get("dataset").asText() : null);
+        builder.table(modelNode.has("table") ? modelNode.get("table").asText() : null);
+        builder.editorMode(modelNode.has("editorMode") ? modelNode.get("editorMode").asText() : null);
+        builder.format(modelNode.has("format") ? modelNode.get("format").asText() : null);
+        
+        // Expression fields
+        builder.expression(modelNode.has("expression") ? modelNode.get("expression").asText() : null);
+        builder.reducer(modelNode.has("reducer") ? modelNode.get("reducer").asText() : null);
+        
+        // Common fields
+        builder.refId(modelNode.has("refId") ? modelNode.get("refId").asText() : null);
+        builder.intervalMs(modelNode.has("intervalMs") ? modelNode.get("intervalMs").asInt() : null);
+        builder.maxDataPoints(modelNode.has("maxDataPoints") ? modelNode.get("maxDataPoints").asInt() : null);
+        
+        // Parse datasource if it's an object
+        if (modelNode.has("datasource")) {
+            JsonNode dsNode = modelNode.get("datasource");
+            if (dsNode.isTextual()) {
+                builder.datasource(dsNode.asText());
+            } else if (dsNode.isObject() && dsNode.has("uid")) {
+                builder.datasource(dsNode.get("uid").asText());
+            }
+        }
+        
+        // Parse conditions array
+        if (modelNode.has("conditions") && modelNode.get("conditions").isArray()) {
+            List<Map<String, Object>> conditions = new ArrayList<>();
+            for (JsonNode condNode : modelNode.get("conditions")) {
+                Map<String, Object> condition = objectMapper.convertValue(condNode, Map.class);
+                conditions.add(condition);
+            }
+            builder.conditions(conditions);
+        }
+        
+        // Parse sql object
+        if (modelNode.has("sql") && modelNode.get("sql").isObject()) {
+            Map<String, Object> sql = objectMapper.convertValue(modelNode.get("sql"), Map.class);
+            builder.sql(sql);
+        }
+        
+        return builder.build();
     }
     
     private ObjectNode buildAlertRuleJson(CreateGrafanaAlertRuleRequest request) {
@@ -266,24 +417,85 @@ public class GrafanaService {
         ruleJson.put("folderUID", request.getFolderUID());
         ruleJson.put("ruleGroup", request.getRuleGroup());
         ruleJson.put("for", request.getFor_() != null ? request.getFor_() : "5m");
-        ruleJson.put("noDataState", request.getNoDataState() != null ? request.getNoDataState() : 0);
-        ruleJson.put("execErrState", request.getExecErrState() != null ? request.getExecErrState() : 0);
+        
+        // Use string values for states as per Grafana API
+        ruleJson.put("noDataState", "NoData");
+        ruleJson.put("execErrState", "Alerting");
         
         // Add condition
-        ruleJson.put("condition", request.getCondition() != null ? request.getCondition() : "A");
+        ruleJson.put("condition", request.getCondition() != null ? request.getCondition() : "C");
         
         // Add data array with query
         ArrayNode dataArray = objectMapper.createArrayNode();
+        
+        // Add the main query (A)
         ObjectNode queryNode = objectMapper.createObjectNode();
         queryNode.put("refId", "A");
         queryNode.put("queryType", "");
+        queryNode.put("datasourceUid", request.getDatasourceUID());
+        
+        // Add relative time range
+        ObjectNode timeRange = objectMapper.createObjectNode();
+        timeRange.put("from", 600);
+        timeRange.put("to", 0);
+        queryNode.set("relativeTimeRange", timeRange);
+        
+        // Add model with SQL or expression
         ObjectNode model = objectMapper.createObjectNode();
-        model.put("expr", request.getQuery());
-        model.put("datasource", request.getDatasourceUID());
+        if (request.getQuery().toLowerCase().contains("select")) {
+            // It's a SQL query
+            model.put("rawSql", request.getQuery());
+            model.put("rawQuery", true);
+            model.put("dataset", "raftools2");
+            model.put("format", "table");
+        } else {
+            // It's an expression
+            model.put("expr", request.getQuery());
+        }
         model.put("intervalMs", 1000);
         model.put("maxDataPoints", 43200);
+        model.put("refId", "A");
         queryNode.set("model", model);
         dataArray.add(queryNode);
+        
+        // Add reduce expression (B)
+        ObjectNode reduceNode = objectMapper.createObjectNode();
+        reduceNode.put("refId", "B");
+        reduceNode.put("queryType", "");
+        reduceNode.put("datasourceUid", "__expr__");
+        
+        ObjectNode reduceModel = objectMapper.createObjectNode();
+        reduceModel.put("type", "reduce");
+        reduceModel.put("expression", "A");
+        reduceModel.put("reducer", "last");
+        reduceModel.put("refId", "B");
+        reduceNode.set("model", reduceModel);
+        dataArray.add(reduceNode);
+        
+        // Add threshold condition (C)
+        ObjectNode thresholdNode = objectMapper.createObjectNode();
+        thresholdNode.put("refId", "C");
+        thresholdNode.put("queryType", "");
+        thresholdNode.put("datasourceUid", "__expr__");
+        
+        ObjectNode thresholdModel = objectMapper.createObjectNode();
+        thresholdModel.put("type", "threshold");
+        thresholdModel.put("expression", "B");
+        thresholdModel.put("refId", "C");
+        
+        // Add threshold conditions
+        ArrayNode conditions = objectMapper.createArrayNode();
+        ObjectNode condition = objectMapper.createObjectNode();
+        ObjectNode evaluator = objectMapper.createObjectNode();
+        evaluator.set("params", objectMapper.createArrayNode().add(0));
+        evaluator.put("type", "gt");
+        condition.set("evaluator", evaluator);
+        conditions.add(condition);
+        thresholdModel.set("conditions", conditions);
+        
+        thresholdNode.set("model", thresholdModel);
+        dataArray.add(thresholdNode);
+        
         ruleJson.set("data", dataArray);
         
         // Add annotations
@@ -311,8 +523,24 @@ public class GrafanaService {
         ruleJson.put("folderUID", request.getFolderUID() != null ? request.getFolderUID() : existingRule.getFolderUID());
         ruleJson.put("ruleGroup", request.getRuleGroup() != null ? request.getRuleGroup() : existingRule.getRuleGroup());
         ruleJson.put("for", request.getFor_() != null ? request.getFor_() : existingRule.getFor_());
-        ruleJson.put("noDataState", request.getNoDataState() != null ? request.getNoDataState() : existingRule.getNoDataState());
-        ruleJson.put("execErrState", request.getExecErrState() != null ? request.getExecErrState() : existingRule.getExecErrState());
+        
+        // Handle noDataState - convert Integer to String if needed
+        String noDataState = "NoData";
+        if (request.getNoDataState() != null) {
+            noDataState = convertNoDataState(request.getNoDataState());
+        } else if (existingRule.getNoDataState() != null) {
+            noDataState = existingRule.getNoDataState();
+        }
+        ruleJson.put("noDataState", noDataState);
+        
+        // Handle execErrState - convert Integer to String if needed
+        String execErrState = "Alerting";
+        if (request.getExecErrState() != null) {
+            execErrState = convertExecErrState(request.getExecErrState());
+        } else if (existingRule.getExecErrState() != null) {
+            execErrState = existingRule.getExecErrState();
+        }
+        ruleJson.put("execErrState", execErrState);
         
         // Handle isPaused
         if (request.getIsPaused() != null) {
@@ -353,6 +581,24 @@ public class GrafanaService {
         }
         
         return ruleJson;
+    }
+    
+    private String convertNoDataState(Integer state) {
+        if (state == null) return "NoData";
+        switch (state) {
+            case 1: return "Alerting";
+            case 2: return "OK";
+            default: return "NoData";
+        }
+    }
+    
+    private String convertExecErrState(Integer state) {
+        if (state == null) return "Alerting";
+        switch (state) {
+            case 0: return "Alerting";
+            case 1: return "OK";
+            default: return "Error";
+        }
     }
     
     public void deleteAlertRule(String uid) {

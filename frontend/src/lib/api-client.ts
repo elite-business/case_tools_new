@@ -286,6 +286,9 @@ export const grafanaApi = {
   syncDashboard: (uid: string) => apiClient.post(`/grafana/dashboards/${uid}/sync`),
   getConnectionStatus: () => apiClient.get('/grafana/connection-status'),
   getAlertRules: () => apiClient.get('/grafana/alert-rules'),
+  createAlertRule: (data: any) => apiClient.post('/grafana/alert-rules', data),
+  updateAlertRule: (uid: string, data: any) => apiClient.put(`/grafana/alert-rules/${uid}`, data),
+  deleteAlertRule: (uid: string) => apiClient.delete(`/grafana/alert-rules/${uid}`),
   
   // Enhanced Grafana alert APIs
   getAlerts: (params?: any) => apiClient.get('/grafana/alerts', { params }),
@@ -335,4 +338,21 @@ export const notificationsApi = {
   updatePreferences: (data: any) => apiClient.put('/notifications/preferences', data),
   deleteNotification: (id: number) => apiClient.delete(`/notifications/${id}`),
   testNotification: (data: any) => apiClient.post('/notifications/test', data),
+};
+
+// Rule Assignment API
+export const ruleAssignmentApi = {
+  getRuleAssignments: (params?: any) => apiClient.get('/rule-assignments', { params }),
+  getRuleAssignmentByGrafanaUid: (grafanaUid: string) => 
+    apiClient.get(`/rule-assignments/grafana-rule/${grafanaUid}`),
+  createOrUpdateRuleAssignment: (grafanaUid: string, data: any) => 
+    apiClient.put(`/rule-assignments/grafana-rule/${grafanaUid}`, data),
+  assignUsersAndTeams: (grafanaUid: string, data: any) => 
+    apiClient.post(`/rule-assignments/grafana-rule/${grafanaUid}/assign`, data),
+  removeAssignments: (grafanaUid: string, data: any) => 
+    apiClient.delete(`/rule-assignments/grafana-rule/${grafanaUid}/assign`, { data }),
+  getMyAssignments: () => apiClient.get('/rule-assignments/my-assignments'),
+  syncFromGrafana: () => apiClient.post('/rule-assignments/sync-from-grafana'),
+  getStatistics: () => apiClient.get('/rule-assignments/statistics'),
+  getGrafanaRules: () => apiClient.get('/rule-assignments/grafana-rules'),
 };

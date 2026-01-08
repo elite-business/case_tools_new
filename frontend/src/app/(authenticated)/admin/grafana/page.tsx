@@ -19,7 +19,8 @@ import {
   Statistic,
   Typography,
   Tooltip,
-  InputNumber
+  InputNumber,
+  Tag
 } from 'antd';
 import { 
   ApiOutlined, 
@@ -30,12 +31,17 @@ import {
   DashboardOutlined,
   ReloadOutlined,
   QuestionCircleOutlined,
-  SettingOutlined
+  SettingOutlined,
+  UserAddOutlined,
+  TeamOutlined,
+  DatabaseOutlined
 } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { grafanaApi } from '@/lib/api-client';
 import type { GrafanaSettings, GrafanaDashboard, GrafanaConnection } from '@/lib/types';
+import RuleAssignmentModal from '@/components/grafana/RuleAssignmentModal';
+import SqlQueryModal from '@/components/grafana/SqlQueryModal';
 import dayjs from 'dayjs';
 
 const { Title, Text, Paragraph } = Typography;
@@ -46,6 +52,10 @@ export default function GrafanaPage() {
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'CONNECTED' | 'DISCONNECTED' | 'ERROR'>('DISCONNECTED');
   const [testModalVisible, setTestModalVisible] = useState(false);
+  const [assignmentModalVisible, setAssignmentModalVisible] = useState(false);
+  const [sqlModalVisible, setSqlModalVisible] = useState(false);
+  const [selectedRule, setSelectedRule] = useState<any>(null);
+  const [selectedQuery, setSelectedQuery] = useState<{ query: string; datasource?: string; title?: string }>({ query: '' });
   const queryClient = useQueryClient();
 
   // Fetch Grafana settings
@@ -191,6 +201,16 @@ export default function GrafanaPage() {
     });
   };
 
+  const handleAssignRule = (rule: any) => {
+    setSelectedRule(rule);
+    setAssignmentModalVisible(true);
+  };
+
+  const handleShowQuery = (query: string, datasource?: string, title?: string) => {
+    setSelectedQuery({ query, datasource, title });
+    setSqlModalVisible(true);
+  };
+
   const getConnectionStatusColor = (status: string) => {
     switch (status) {
       case 'CONNECTED': return 'success';
@@ -211,7 +231,7 @@ export default function GrafanaPage() {
     {
       title: 'Dashboard',
       key: 'dashboard',
-      render: (_, record: GrafanaDashboard) => (
+      render: (_: any, record: GrafanaDashboard) => (
         <div>
           <div className="font-medium">{record.title}</div>
           <div className="text-sm text-gray-500">UID: {record.uid}</div>
@@ -221,14 +241,14 @@ export default function GrafanaPage() {
     {
       title: 'Folder',
       key: 'folder',
-      render: (_, record: GrafanaDashboard) => (
+      render: (_:any, record: GrafanaDashboard) => (
         record.folderTitle || 'General'
       ),
     },
     {
       title: 'Tags',
       key: 'tags',
-      render: (_, record: GrafanaDashboard) => (
+      render: (_:any, record: GrafanaDashboard) => (
         <div>
           {record.tags.map(tag => (
             <Badge key={tag} count={tag} style={{ backgroundColor: '#108ee9', marginRight: 4 }} />
@@ -239,7 +259,7 @@ export default function GrafanaPage() {
     {
       title: 'Actions',
       key: 'actions',
-      render: (_, record: GrafanaDashboard) => (
+      render: (_ : any, record: GrafanaDashboard) => (
         <Space>
           <Button
             type="link"
@@ -558,61 +578,149 @@ export default function GrafanaPage() {
               {
                 title: 'Rule Name',
                 key: 'name',
+                width: 250,
                 render: (_, record: any) => (
                   <div>
-                    <div className="font-medium">{record.name}</div>
-                    <div className="text-sm text-gray-500">UID: {record.grafanaUid}</div>
+                    <div className="font-medium">{record.title || record.name}</div>
+                    <div className="text-xs text-gray-500">UID: {record.uid || record.grafanaUid}</div>
+                    {record.ruleGroup && (
+                      <Tag color="blue" className="mt-1">{record.ruleGroup}</Tag>
+                    )}
                   </div>
                 ),
               },
               {
-                title: 'Description',
-                dataIndex: 'description',
-                key: 'description',
-                ellipsis: true,
-                render: (text) => text || 'No description',
+                title: 'Query Details',
+                key: 'query',
+                width: 350,
+                render: (_, record: any) => {
+                  // Extract SQL query from the data array
+                  const sqlQuery = record.data?.[0]?.model?.rawSql || 
+                                  record.data?.[0]?.model?.rawQuery ||
+                                  record.data?.[0]?.model?.expr ||
+                                  'No query available';
+                  const datasource = record.data?.[0]?.datasourceUid || record.data?.[0]?.datasource || 'Unknown';
+                  const isLongQuery = sqlQuery.length > 100;
+                  
+                  return (
+                    <div>
+                      <div className="text-xs font-mono bg-gray-50 p-2 rounded mb-1" style={{ 
+                        maxHeight: '60px', 
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'pre-wrap'
+                      }}>
+                        {isLongQuery ? `${sqlQuery.substring(0, 100)}...` : sqlQuery}
+                      </div>
+                      <div className="flex items-center justify-between mt-1">
+                        <div className="text-xs text-gray-500">
+                          Datasource: {datasource}
+                        </div>
+                        {sqlQuery !== 'No query available' && (
+                          <Button
+                            type="link"
+                            size="small"
+                            icon={<DatabaseOutlined />}
+                            onClick={() => handleShowQuery(sqlQuery, datasource, record.title || record.name)}
+                            style={{ padding: '0 4px' }}
+                          >
+                            Show Query
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                },
               },
               {
-                title: 'Type',
-                dataIndex: 'type',
-                key: 'type',
-              },
-              {
-                title: 'Severity',
-                dataIndex: 'severity',
-                key: 'severity',
-                render: (severity) => (
-                  <Badge 
-                    color={severity === 'CRITICAL' ? 'red' : severity === 'HIGH' ? 'orange' : severity === 'MEDIUM' ? 'gold' : 'green'}
-                    text={severity}
-                  />
+                title: 'Alert Condition',
+                key: 'condition',
+                width: 200,
+                render: (_, record: any) => (
+                  <div>
+                    <div className="text-sm">
+                      For: {record.for_ || record.for || '1m'}
+                    </div>
+                    {record.annotations?.summary && (
+                      <Tooltip title={record.annotations.summary}>
+                        <div className="text-xs text-gray-500 truncate" style={{ maxWidth: '180px' }}>
+                          {record.annotations.summary}
+                        </div>
+                      </Tooltip>
+                    )}
+                  </div>
                 ),
               },
               {
-                title: 'Status',
-                dataIndex: 'active',
-                key: 'active',
-                render: (active) => (
-                  <Badge 
-                    status={active ? 'success' : 'default'} 
-                    text={active ? 'Active' : 'Inactive'} 
-                  />
+                title: 'State',
+                key: 'state',
+                width: 120,
+                render: (_, record: any) => (
+                  <Space direction="vertical" size="small">
+                    <Badge 
+                      status={record.isPaused === false ? 'success' : 'default'} 
+                      text={record.isPaused === false ? 'Active' : 'Paused'} 
+                    />
+                    {record.noDataState && (
+                      <span className="text-xs text-gray-500">
+                        No Data: {record.noDataState}
+                      </span>
+                    )}
+                  </Space>
                 ),
+              },
+              {
+                title: 'Assigned To',
+                key: 'assigned',
+                render: (_, record: any) => {
+                  // You would fetch the actual assignment data here
+                  return (
+                    <Space size="small">
+                      {record.assignedUsers?.length > 0 && (
+                        <Tooltip title={`${record.assignedUsers.length} users assigned`}>
+                          <Badge count={record.assignedUsers.length} style={{ backgroundColor: '#52c41a' }}>
+                            <UserAddOutlined />
+                          </Badge>
+                        </Tooltip>
+                      )}
+                      {record.assignedTeams?.length > 0 && (
+                        <Tooltip title={`${record.assignedTeams.length} teams assigned`}>
+                          <Badge count={record.assignedTeams.length} style={{ backgroundColor: '#1890ff' }}>
+                            <TeamOutlined />
+                          </Badge>
+                        </Tooltip>
+                      )}
+                      {!record.assignedUsers?.length && !record.assignedTeams?.length && (
+                        <span className="text-gray-400">Not assigned</span>
+                      )}
+                    </Space>
+                  );
+                },
               },
               {
                 title: 'Actions',
                 key: 'actions',
-                render: () => (
-                  <Button
-                    type="link"
-                    size="small"
-                    onClick={() => {
-                      const grafanaUrl = process.env.NEXT_PUBLIC_GRAFANA_URL || 'http://localhost:9000';
-                      window.open(`${grafanaUrl}/alerting/list`, '_blank');
-                    }}
-                  >
-                    View in Grafana
-                  </Button>
+                render: (_, record) => (
+                  <Space>
+                    <Button
+                      type="primary"
+                      size="small"
+                      icon={<UserAddOutlined />}
+                      onClick={() => handleAssignRule(record)}
+                    >
+                      Assign
+                    </Button>
+                    <Button
+                      type="link"
+                      size="small"
+                      onClick={() => {
+                        const grafanaUrl = process.env.NEXT_PUBLIC_GRAFANA_URL || 'http://localhost:9000';
+                        window.open(`${grafanaUrl}/alerting/list`, '_blank');
+                      }}
+                    >
+                      View in Grafana
+                    </Button>
+                  </Space>
                 ),
               },
             ]}
@@ -690,6 +798,28 @@ export default function GrafanaPage() {
           </Form.Item>
         </Form>
       </Modal>
+
+      {/* Rule Assignment Modal */}
+      <RuleAssignmentModal
+        visible={assignmentModalVisible}
+        rule={selectedRule}
+        onClose={() => {
+          setAssignmentModalVisible(false);
+          setSelectedRule(null);
+        }}
+      />
+
+      {/* SQL Query Modal */}
+      <SqlQueryModal
+        visible={sqlModalVisible}
+        query={selectedQuery.query}
+        datasource={selectedQuery.datasource}
+        title={selectedQuery.title}
+        onClose={() => {
+          setSqlModalVisible(false);
+          setSelectedQuery({ query: '' });
+        }}
+      />
     </PageContainer>
   );
 }
