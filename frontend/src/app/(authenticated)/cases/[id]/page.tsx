@@ -65,6 +65,7 @@ import { casesApi, usersApi, handleApiError } from '@/lib/api-client';
 import { Case, CaseComment, CaseActivity, User, CaseStatus, CaseSeverity, CasePriority, UpdateCaseRequest, CloseCaseRequest } from '@/lib/types';
 import StatusIndicator from '@/components/ui-system/StatusIndicator';
 import ActionDropdown, { CommonActions } from '@/components/ui-system/ActionDropdown';
+import QuickActions from '@/components/cases/QuickActions';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 
@@ -295,6 +296,17 @@ export default function CaseDetailPage() {
 
   if (!editing) {
     extraActions.push(
+      <QuickActions 
+        key="quick-actions"
+        case={caseDetails}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['case', caseId] });
+          queryClient.invalidateQueries({ queryKey: ['cases'] });
+        }}
+        size="middle"
+        type="dropdown"
+        disabled={caseDetails.status === 'CLOSED' || caseDetails.status === 'CANCELLED'}
+      />,
       <Button 
         key="edit"
         icon={<EditOutlined />}

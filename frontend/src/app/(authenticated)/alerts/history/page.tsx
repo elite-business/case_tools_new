@@ -356,15 +356,15 @@ export default function AlertHistoryPage() {
 
   return (
     <PageContainer
-      title="Alert History"
-      subTitle="View and manage historical alert data"
+      title="Alert History & Audit Trail"
+      subTitle="Complete alert audit trail - view all received alerts, their processing status, and lifecycle events. This serves as a compliance and forensic analysis tool."
       extra={[
         <Button
           key="export"
           icon={<DownloadOutlined />}
           onClick={handleExport}
         >
-          Export
+          Export Audit Log
         </Button>,
       ]}
     >

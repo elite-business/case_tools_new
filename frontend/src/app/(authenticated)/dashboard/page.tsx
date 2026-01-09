@@ -74,6 +74,8 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { casesApi, alertsApi, analyticsApi, systemApi, handleApiError } from '@/lib/api-client';
 import { useWebSocketContext } from '@/components/providers/WebSocketProvider';
+import { useAuthStore } from '@/store/auth-store';
+import { isManagerOrHigher, canShowAdminFeatures } from '@/lib/rbac';
 import MetricsCard from '@/components/ui-system/MetricsCard';
 import StatusIndicator from '@/components/ui-system/StatusIndicator';
 import dayjs from 'dayjs';
@@ -85,12 +87,18 @@ export default function DashboardPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { notifications, unreadCount, isConnected } = useWebSocketContext();
+  const { user } = useAuthStore();
   
   const [dateRange, setDateRange] = useState([
     dayjs().subtract(30, 'day'),
     dayjs(),
   ]);
   const [timeframe, setTimeframe] = useState('daily');
+
+  // Check user role and permissions
+  const userRole = user?.role || (user?.roles && user.roles[0]) || 'VIEWER';
+  const canViewAllData = isManagerOrHigher(userRole);
+  const canViewSystemData = canShowAdminFeatures(userRole);
 
   // API Queries
   const { data: overviewData, isLoading: overviewLoading, refetch: refetchOverview } = useQuery({
@@ -308,7 +316,7 @@ export default function DashboardPage() {
             <Col>
               <Space direction="vertical" size={0}>
                 <Title level={2} style={{ margin: 0 }}>
-                  Revenue Assurance Dashboard
+                  {canViewAllData ? 'System Dashboard' : 'My Dashboard'}
                   {unreadCount > 0 && (
                     <span style={{ marginLeft: 8 }}>
                       <Badge count={unreadCount} size="small" />
@@ -316,8 +324,21 @@ export default function DashboardPage() {
                   )}
                 </Title>
                 <Paragraph type="secondary" style={{ margin: 0 }}>
-                  Real-time monitoring and analytics for telecom revenue protection
+                  {canViewAllData 
+                    ? 'System-wide monitoring and analytics for telecom revenue protection'
+                    : 'Your personal overview of assigned cases and team performance'
+                  }
                 </Paragraph>
+                {!canViewAllData && (
+                  <Alert
+                    message={`Personal View (${userRole})`}
+                    description="You're viewing data specific to your role. Contact your manager for system-wide access."
+                    type="info"
+                    showIcon
+                    closable
+                    style={{ marginTop: 8, maxWidth: 500 }}
+                  />
+                )}
               </Space>
             </Col>
             <Col>

@@ -52,6 +52,7 @@ import FilterBar, { FilterConfig } from '@/components/ui-system/FilterBar';
 import StatusIndicator from '@/components/ui-system/StatusIndicator';
 import ActionDropdown, { CommonActions } from '@/components/ui-system/ActionDropdown';
 import MetricsCard from '@/components/ui-system/MetricsCard';
+import QuickActions, { BulkQuickActions } from '@/components/cases/QuickActions';
 import { useAuthStore } from '@/store/auth-store';
 import { Permission } from '@/lib/rbac';
 import { RoleGuard, useRolePermissions } from '@/components/auth/RoleGuard';
@@ -67,6 +68,7 @@ export default function CasesPage() {
   const [selectedCase, setSelectedCase] = useState<Case | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<number>();
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [selectedCases, setSelectedCases] = useState<Case[]>([]);
   const [filters, setFilters] = useState<CaseFilters>({});
   const [showFilters, setShowFilters] = useState(false);
 
@@ -462,11 +464,20 @@ export default function CasesPage() {
         }
         
         return (
-          <ActionDropdown
-            items={actions}
-            placement="bottomRight"
-            size="small"
-          />
+          <Space size="small">
+            <QuickActions 
+              case={record} 
+              onSuccess={() => actionRef.current?.reload()}
+              size="small"
+              type="dropdown"
+              disabled={isClosedOrCancelled}
+            />
+            <ActionDropdown
+              items={actions}
+              placement="bottomRight"
+              size="small"
+            />
+          </Space>
         );
       },
     },
@@ -477,11 +488,21 @@ export default function CasesPage() {
       {/* Role-based access notification */}
       {!permissions.viewAll && (
         <Alert
-          message="Limited Access"
-          description="You can only view cases assigned to you or your team. To see all cases, please contact your manager."
+          message="Filtered View"
+          description={`You are viewing cases assigned to you${userRole === 'ANALYST' ? ' or your teams' : ''}. Admins and Managers can view all system cases.`}
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
+          action={
+            <Space>
+              <Button size="small" type="primary" ghost onClick={() => setFilters({ status: ['ASSIGNED', 'IN_PROGRESS'] })}>
+                Show My Active
+              </Button>
+              <Button size="small" onClick={() => setFilters({ assignedTo: [user?.id || 0] })}>
+                Only My Cases
+              </Button>
+            </Space>
+          }
           closable
         />
       )}
@@ -590,6 +611,14 @@ export default function CasesPage() {
                       Bulk Assign
                     </Button>
                   </RoleGuard>
+                  <BulkQuickActions
+                    selectedCases={selectedCases}
+                    onSuccess={() => {
+                      setSelectedRowKeys([]);
+                      setSelectedCases([]);
+                      actionRef.current?.reload();
+                    }}
+                  />
                   <RoleGuard permissions={Permission.CLOSE_CASES}>
                     <Button size="small" icon={<CheckCircleOutlined />} onClick={() => handleBulkAction('close')}>
                       Bulk Close
@@ -615,7 +644,7 @@ export default function CasesPage() {
       <PageContainer
         title={
           <Space>
-            <span>Cases Management</span>
+            <span>{permissions.viewAll ? 'All Cases' : 'My Cases & Assignments'}</span>
             {Object.keys(filters).length > 0 && (
               <Badge 
                 count={Object.keys(filters).length} 
@@ -624,7 +653,11 @@ export default function CasesPage() {
             )}
           </Space>
         }
-        subTitle="Manage and track all revenue assurance cases"
+        subTitle={
+          permissions.viewAll 
+            ? "Complete case management for all teams and users" 
+            : "Cases assigned to you and your teams"
+        }
         extra={[
           <Button 
             key="filters" 
@@ -724,7 +757,10 @@ export default function CasesPage() {
             rowKey="id"
             rowSelection={{
               selectedRowKeys,
-              onChange: setSelectedRowKeys,
+              onChange: (selectedKeys, selectedRows) => {
+                setSelectedRowKeys(selectedKeys);
+                setSelectedCases(selectedRows);
+              },
               preserveSelectedRowKeys: true,
               getCheckboxProps: (record: Case) => ({
                 disabled: record.status === 'CLOSED' || record.status === 'CANCELLED',

@@ -42,12 +42,20 @@ import {
 import { Line, Area, Column, Pie, Gauge, Liquid } from '@ant-design/charts';
 import { useQuery } from '@tanstack/react-query';
 import { analyticsApi, casesApi, alertsApi } from '@/lib/api-client';
+import { useAuthStore } from '@/store/auth-store';
+import { isManagerOrHigher, canShowAdminFeatures } from '@/lib/rbac';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 
 export default function AnalyticsPage() {
+  const { user } = useAuthStore();
+  
+  // Check user role and permissions
+  const userRole = user?.role || (user?.roles && user.roles[0]) || 'VIEWER';
+  const canViewAllData = isManagerOrHigher(userRole);
+  const canViewSystemData = canShowAdminFeatures(userRole);
   const [dateRange, setDateRange] = useState([
     dayjs().subtract(30, 'day'),
     dayjs(),

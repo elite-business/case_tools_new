@@ -109,39 +109,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
         onClick: () => router.push('/dashboard'),
       },
       {
-        key: 'cases-menu',
+        key: '/cases',
         icon: <FileProtectOutlined />,
         label: 'Cases',
-        children: [
-          // My Cases - visible to all users
-          {
-            key: '/cases/my-cases',
-            label: 'My Cases',
-            onClick: () => router.push('/cases/my-cases'),
-          },
-          // All Cases - only for admins and managers
-          ...(showManagerFeatures ? [{
-            key: '/cases',
-            label: 'All Cases',
-            onClick: () => router.push('/cases'),
-          }] : []),
-          {
-            key: '/cases/active',
-            label: 'Active Cases',
-            onClick: () => router.push('/cases/active'),
-          },
-          {
-            key: '/cases/resolved',
-            label: 'Resolved Cases',
-            onClick: () => router.push('/cases/resolved'),
-          },
-          // Create New Case - only for admins and managers
-          ...(showManagerFeatures ? [{
-            key: '/cases/new',
-            label: 'Create New Case',
-            onClick: () => router.push('/cases/new'),
-          }] : []),
-        ],
+        onClick: () => router.push('/cases'),
       },
       {
         key: 'alerts-menu',
@@ -150,7 +121,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
         children: [
           {
             key: '/alerts/history',
-            label: 'Alert History',
+            label: 'Alert Audit Trail',
             onClick: () => router.push('/alerts/history'),
           },
           // Alert Rules - visible to admins and managers only
@@ -159,7 +130,6 @@ export default function AppLayout({ children }: AppLayoutProps) {
             label: 'Alert Rules',
             onClick: () => router.push('/alerts/rules'),
           }] : []),
-          // Rule Builder removed entirely from navigation
         ],
       },
       {
@@ -192,15 +162,26 @@ export default function AppLayout({ children }: AppLayoutProps) {
         children: [
           {
             key: '/admin/users',
-            label: 'Users',
+            label: 'User Management',
             onClick: () => router.push('/admin/users'),
           },
           // Teams - visible to admins and managers
           ...(showManagerFeatures ? [{
             key: '/admin/teams',
-            label: 'Teams',
+            label: 'Team Management',
             onClick: () => router.push('/admin/teams'),
           }] : []),
+          {
+            key: '/admin/rule-assignments',
+            label: 'Rule Assignments',
+            onClick: () => router.push('/admin/rule-assignments'),
+          },
+          {
+            key: '/admin/unassigned-cases',
+            label: 'Unassigned Cases',
+            onClick: () => router.push('/admin/unassigned-cases'),
+          },
+          { type: 'divider' },
           {
             key: '/admin/system',
             label: 'System Settings',
