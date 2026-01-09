@@ -217,8 +217,8 @@ export default function UsersPage() {
       key: 'user',
       render: (_, record: User) => (
         <div>
-          <div className="font-medium">{record.fullName}</div>
-          <div className="text-sm text-gray-500">@{record.username}</div>
+          <div className="font-medium">{record.fullName || record.username || 'Unnamed User'}</div>
+          <div className="text-sm text-gray-500">@{record.username || 'no-username'}</div>
         </div>
       ),
     },
@@ -226,13 +226,14 @@ export default function UsersPage() {
       title: 'Email',
       dataIndex: 'email',
       key: 'email',
+      render: (email: string) => email || 'No email',
     },
     {
       title: 'Role',
       dataIndex: 'role',
       key: 'role',
       render: (role: string) => (
-        <Tag color={getRoleColor(role)}>{role}</Tag>
+        <Tag color={getRoleColor(role || 'VIEWER')}>{role || 'VIEWER'}</Tag>
       ),
       filters: [
         { text: 'Admin', value: 'ADMIN' },
@@ -254,8 +255,8 @@ export default function UsersPage() {
       key: 'status',
       render: (isActive: boolean) => (
         <Badge 
-          status={isActive ? 'success' : 'error'} 
-          text={isActive ? 'Active' : 'Inactive'} 
+          status={isActive !== false ? 'success' : 'error'} 
+          text={isActive !== false ? 'Active' : 'Inactive'} 
         />
       ),
       filters: [

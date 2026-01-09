@@ -61,19 +61,20 @@ export default function MyCasesPage() {
   const [selectedCase, setSelectedCase] = useState<Case | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<number>();
   
-  // Check reassignment permission based on user's reAssignedTo field
-  // In the user entity, this is stored as reAssignedTo boolean field
-  const canReassign = (user as any)?.reAssignedTo === true || (user as any)?.re_assigned_to === true;
+  // Check reassignment permission based on user's permissions
+  // Access the permission from the nested permissions object
+  const canReassign = (user as any)?.permissions?.reAssignedTo === true;
 
-  // Fetch user teams for filtering
+  // Fetch user teams for filtering using the correct API endpoint
   const { data: userTeams } = useQuery({
-    queryKey: ['users', 'teams', user?.id],
+    queryKey: ['users', 'me', 'teams'],
     queryFn: async () => {
       if (!user?.id) return [];
       try {
-        const response = await apiClient.get(`/users/${user.id}/teams`);
-        return response.data;
+        const response = await apiClient.get('/users/me/teams');
+        return response.data || [];
       } catch (error) {
+        console.warn('Failed to fetch user teams:', error);
         return [];
       }
     },

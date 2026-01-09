@@ -23,7 +23,6 @@ import {
   Badge,
   Descriptions,
   Timeline,
-  Comment,
   Avatar,
   Form,
   Input,
@@ -365,13 +364,13 @@ export default function CaseDetailPage() {
 
   return (
     <PageContainer
-      title={`Case ${caseDetails.caseId}`}
+      title={`Case ${caseDetails.caseNumber}`}
       subTitle={caseDetails.title}
       extra={extraActions}
       tags={[
         <StatusIndicator key="status" type="status" value={caseDetails.status} showText showIcon animated={caseDetails.status === 'IN_PROGRESS'} />,
         <StatusIndicator key="severity" type="severity" value={caseDetails.severity} showText animated={caseDetails.severity === 'CRITICAL'} />,
-        <StatusIndicator key="priority" type="priority" value={caseDetails.priority} showText animated={caseDetails.priority === 'URGENT'} />,
+        <StatusIndicator key="priority" type="priority" value={caseDetails.priority.toString()} showText animated={caseDetails.priority === 1} />,
       ]}
       content={
         <motion.div
@@ -612,9 +611,9 @@ export default function CaseDetailPage() {
                 <Descriptions.Item label="Priority">
                   <StatusIndicator
                     type="priority"
-                    value={caseDetails.priority}
+                    value={caseDetails.priority.toString()}
                     showText
-                    animated={caseDetails.priority === 'URGENT'}
+                    animated={caseDetails.priority === 1}
                   />
                 </Descriptions.Item>
                 <Descriptions.Item label="Status">
@@ -630,10 +629,20 @@ export default function CaseDetailPage() {
                   {caseDetails.category || 'Not specified'}
                 </Descriptions.Item>
                 <Descriptions.Item label="Assigned To">
-                  {caseDetails.assignedTo ? (
+                  {caseDetails.assignedUsers && caseDetails.assignedUsers.length > 0 ? (
+                    <Space direction="vertical" size="small">
+                      {caseDetails.assignedUsers.map(user => (
+                        <Space key={user.id}>
+                          <Avatar size="small" icon={<UserOutlined />} />
+                          {user.name || user.fullName || user.username}
+                          {user.email && <span style={{ color: '#999', fontSize: 12 }}>({user.email})</span>}
+                        </Space>
+                      ))}
+                    </Space>
+                  ) : caseDetails.assignedTo ? (
                     <Space>
                       <Avatar size="small" icon={<UserOutlined />} />
-                      {caseDetails.assignedTo.fullName}
+                      {caseDetails.assignedTo.name || caseDetails.assignedTo.fullName || caseDetails.assignedTo.username}
                     </Space>
                   ) : (
                     <span style={{ color: '#999' }}>Unassigned</span>
@@ -693,11 +702,25 @@ export default function CaseDetailPage() {
                     <div>
                       <Text strong>Assigned To:</Text>
                       <br />
-                      {caseDetails.assignedTo ? (
+                      {caseDetails.assignedUsers && caseDetails.assignedUsers.length > 0 ? (
+                        <div style={{ marginTop: 8 }}>
+                          {caseDetails.assignedUsers.map((user, index) => (
+                            <Space key={user.id} style={{ display: 'block', marginBottom: index < caseDetails.assignedUsers!.length - 1 ? 8 : 0 }}>
+                              <Avatar size="small" icon={<UserOutlined />} />
+                              <div>
+                                <div>{user.name || user.fullName || user.username}</div>
+                                <Text type="secondary" style={{ fontSize: 12 }}>
+                                  {user.email}
+                                </Text>
+                              </div>
+                            </Space>
+                          ))}
+                        </div>
+                      ) : caseDetails.assignedTo ? (
                         <Space style={{ marginTop: 8 }}>
                           <Avatar size="small" icon={<UserOutlined />} />
                           <div>
-                            <div>{caseDetails.assignedTo.fullName}</div>
+                            <div>{caseDetails.assignedTo.name || caseDetails.assignedTo.fullName || caseDetails.assignedTo.username}</div>
                             <Text type="secondary" style={{ fontSize: 12 }}>
                               {caseDetails.assignedTo.email}
                             </Text>
@@ -708,7 +731,6 @@ export default function CaseDetailPage() {
                           message="Unassigned"
                           description="This case needs to be assigned to a team member"
                           type="warning"
-                          size="small"
                           style={{ marginTop: 8 }}
                           action={
                             <Button 
@@ -798,11 +820,11 @@ export default function CaseDetailPage() {
                 {activitiesData?.data?.map((activity: CaseActivity, index) => (
                   <Timeline.Item 
                     key={activity.id}
-                    color={activity.type === 'COMMENT_ADDED' ? 'green' : 
-                           activity.type === 'STATUS_CHANGED' ? 'orange' : 'blue'}
-                    dot={activity.type === 'COMMENT_ADDED' ? <MessageOutlined /> :
-                         activity.type === 'STATUS_CHANGED' ? <ExclamationCircleOutlined /> :
-                         activity.type === 'ASSIGNED' ? <UserAddOutlined /> : 
+                    color={activity.activityType === 'COMMENT_ADDED' ? 'green' : 
+                           activity.activityType === 'STATUS_CHANGED' ? 'orange' : 'blue'}
+                    dot={activity.activityType === 'COMMENT_ADDED' ? <MessageOutlined /> :
+                         activity.activityType === 'STATUS_CHANGED' ? <ExclamationCircleOutlined /> :
+                         activity.activityType === 'ASSIGNED' ? <UserAddOutlined /> : 
                          <ClockCircleOutlined />}
                   >
                     <motion.div
@@ -819,7 +841,7 @@ export default function CaseDetailPage() {
                         </div>
                       )}
                       <br />
-                      <small>by {activity.actor?.fullName}</small>
+                      <small>by {activity.user?.name || activity.user?.fullName || activity.user?.username}</small>
                       <br />
                       <small>{dayjs(activity.createdAt).fromNow()}</small>
                     </motion.div>
@@ -934,13 +956,13 @@ export default function CaseDetailPage() {
                           <div style={{ marginBottom: 8 }}>
                             <Space>
                               <Text strong style={{ fontSize: 14 }}>
-                                {comment.author?.fullName}
+                                {comment.user?.name || comment.user?.fullName || comment.user?.username || comment.author?.fullName}
                               </Text>
                               <Text type="secondary" style={{ fontSize: 12 }}>
                                 {dayjs(comment.createdAt).fromNow()}
                               </Text>
                               {comment.isInternal && (
-                                <Tag color="orange" size="small">
+                                <Tag color="orange">
                                   <LockOutlined style={{ fontSize: 10 }} /> Internal
                                 </Tag>
                               )}
@@ -951,7 +973,7 @@ export default function CaseDetailPage() {
                             lineHeight: '1.5',
                             fontSize: 14 
                           }}>
-                            {comment.content}
+                            {comment.comment || comment.content}
                           </div>
                         </div>
                       </Space>
@@ -991,7 +1013,11 @@ export default function CaseDetailPage() {
             <strong>Case:</strong> {caseDetails.title}
           </div>
           <div>
-            <strong>Current Assignee:</strong> {caseDetails.assignedTo?.fullName || 'Unassigned'}
+            <strong>Current Assignee:</strong> {
+              caseDetails.assignedUsers && caseDetails.assignedUsers.length > 0 
+                ? caseDetails.assignedUsers.map(u => u.name || u.fullName || u.username).join(', ')
+                : caseDetails.assignedTo?.name || caseDetails.assignedTo?.fullName || caseDetails.assignedTo?.username || 'Unassigned'
+            }
           </div>
           <div>
             <strong>Assign to:</strong>
@@ -1002,7 +1028,7 @@ export default function CaseDetailPage() {
               onChange={setSelectedUserId}
               showSearch
               filterOption={(input, option) =>
-                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
               }
               options={users?.data?.filter((user: User) => user && user.id != null).map((user: User) => ({
                 value: user.id,

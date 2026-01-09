@@ -69,28 +69,11 @@ public class AlertService {
     }
 
     /**
-     * Acknowledge alert
+     * Acknowledge alert - DISABLED with simplified AlertHistory
+     * Cases are now acknowledged instead of alerts
      */
     public AlertHistoryResponse acknowledgeAlert(Long alertId, AcknowledgeAlertRequest request, String username) {
-        log.info("Acknowledging alert {} by user: {}", alertId, username);
-        
-        AlertHistory alert = alertHistoryRepository.findById(alertId)
-                .orElseThrow(() -> new ResourceNotFoundException("Alert not found with id: " + alertId));
-        
-        User user = getCurrentUser(username);
-        validateUserCanManageAlert(alert, user);
-                
-        alert.setStatus(AlertHistory.AlertStatus.ACKNOWLEDGED);
-        alert.setAcknowledgeNotes(request.getNotes());
-        alert.setAcknowledgedAt(LocalDateTime.now());
-        alert.setAcknowledgedBy(user);
-        
-        AlertHistory savedAlert = alertHistoryRepository.save(alert);
-        
-        // Send notifications
-        notifyAlertStatusChange(savedAlert, "acknowledged", user);
-        
-        return mapToResponse(savedAlert);
+        throw new UnsupportedOperationException("Alert acknowledgment is disabled. Please acknowledge the associated case instead.");
     }
 
     /**
@@ -623,23 +606,8 @@ public class AlertService {
         }
     }
     
-    private AlertHistory.AlertSeverity mapSeverity(String severity) {
-        if (severity == null) return AlertHistory.AlertSeverity.MEDIUM;
-        try {
-            return AlertHistory.AlertSeverity.valueOf(severity.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            return AlertHistory.AlertSeverity.MEDIUM;
-        }
-    }
-    
-    private AlertHistory.AlertCategory mapCategory(String category) {
-        if (category == null) return AlertHistory.AlertCategory.OTHER;
-        try {
-            return AlertHistory.AlertCategory.valueOf(category.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            return AlertHistory.AlertCategory.OTHER;
-        }
-    }
+    // Removed deprecated mapSeverity and mapCategory methods
+    // These are no longer needed with simplified AlertHistory
     
     
     private void notifyNewAlert(AlertHistory alert) {

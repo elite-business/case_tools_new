@@ -37,6 +37,11 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
     List<Team> findByActiveTrue();
 
     /**
+     * Find teams by active status
+     */
+    List<Team> findByActive(Boolean active);
+
+    /**
      * Find team by name (case insensitive)
      */
     Optional<Team> findByNameIgnoreCase(String name);

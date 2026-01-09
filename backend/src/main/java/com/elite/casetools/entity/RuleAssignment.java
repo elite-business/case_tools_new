@@ -61,6 +61,16 @@ public class RuleAssignment extends BaseEntity {
     @Builder.Default
     private AssignmentStrategy assignmentStrategy = AssignmentStrategy.MANUAL;
 
+    @Column(name = "case_template", columnDefinition = "TEXT")
+    private String caseTemplate; // JSON with title template, description, initial actions
+
+    @Column(name = "escalation_after_minutes")
+    @Builder.Default
+    private Integer escalationAfterMinutes = 30; // Auto-escalate if not acknowledged
+
+    @Column(name = "escalation_team_id")
+    private Long escalationTeamId; // Team to escalate to
+
     // Users assigned to this rule
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(

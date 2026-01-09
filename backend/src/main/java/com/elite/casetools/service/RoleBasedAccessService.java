@@ -151,10 +151,9 @@ public class RoleBasedAccessService {
             return true;
         }
 
-        // User can manage alerts assigned to them
-        if (alert.getAssignedTo() != null && alert.isAssignedToUser(user.getId())) {
-            return true;
-        }
+        // Simplified AlertHistory doesn't track assignments
+        // Access control should be based on associated Case
+        // For now, only admins can manage alerts directly
 
         // Managers can manage team alerts
         if (user.getRole() == User.UserRole.MANAGER) {
@@ -305,18 +304,12 @@ public class RoleBasedAccessService {
 
     /**
      * Check if alert belongs to user's team member
+     * DISABLED: Simplified AlertHistory no longer tracks assignments
      */
     private boolean isTeamMemberAlert(User manager, AlertHistory alert) {
-        if (alert.getAssignedTo() == null) {
-            return false;
-        }
-
-        List<Long> teamMemberIds = getTeamMemberIds(manager);
-        AssignmentInfo assignmentInfo = alert.getAssignmentInfo();
-        
-        // Check if any assigned users are team members
-        return assignmentInfo.getUserIds().stream()
-                .anyMatch(teamMemberIds::contains);
+        // Simplified AlertHistory doesn't track assignments
+        // Access control should be checked at the Case level
+        return false;
     }
 
     /**

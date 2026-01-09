@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * REST controller for case management operations
@@ -194,18 +195,29 @@ public class CaseController {
                 ? LocalDateTime.now().minusDays(30) 
                 : LocalDateTime.now().minusYears(1);
                 
-        // Get actual stats from service
-        caseService.getCaseStatistics(startDate);
+        // Get actual stats from database (returns a Map)
+        @SuppressWarnings("unchecked")
+        Map<String, Object> statsMap = (Map<String, Object>) caseService.getCaseStatistics(startDate);
         
-        // Mock response - implement proper stats calculation in service
+        // Extract values from map with null safety
+        Long openCases = statsMap.get("openCases") != null ? ((Number) statsMap.get("openCases")).longValue() : 0L;
+        Long inProgressCases = statsMap.get("inProgressCases") != null ? ((Number) statsMap.get("inProgressCases")).longValue() : 0L;
+        Long resolvedCases = statsMap.get("resolvedCases") != null ? ((Number) statsMap.get("resolvedCases")).longValue() : 0L;
+        Long closedCases = statsMap.get("closedCases") != null ? ((Number) statsMap.get("closedCases")).longValue() : 0L;
+        Long breachedCases = statsMap.get("breachedCases") != null ? ((Number) statsMap.get("breachedCases")).longValue() : 0L;
+        
+        // Calculate total and overdue (overdue is same as breached in this context)
+        Long total = openCases + inProgressCases + resolvedCases + closedCases;
+        
+        // Build response from actual data
         CaseStatsResponse response = CaseStatsResponse.builder()
-                .total(100L)
-                .open(25L)
-                .inProgress(30L)
-                .resolved(20L)
-                .closed(25L)
-                .overdue(5L)
-                .breachedSla(3L)
+                .total(total)
+                .open(openCases)
+                .inProgress(inProgressCases)
+                .resolved(resolvedCases)
+                .closed(closedCases)
+                .overdue(breachedCases)  // Using breached as overdue
+                .breachedSla(breachedCases)
                 .build();
                 
         return ResponseEntity.ok(response);
@@ -217,14 +229,99 @@ public class CaseController {
     @GetMapping("/my-cases")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST')")
     @Operation(summary = "Get current user's assigned cases")
-    public ResponseEntity<Page<CaseResponse>> getMyCases(
-            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
+    public ResponseEntity<List<CaseResponse>> getMyCases(
+            @RequestParam(defaultValue = "false") boolean includeClosedCases,
             Authentication authentication) {
         
         User currentUser = (User) authentication.getPrincipal();
-        Page<Case> cases = caseService.getUserCases(currentUser.getId(), pageable);
-        Page<CaseResponse> caseResponses = cases.map(this::convertToResponse);
+        List<Case> cases = caseService.getUserCases(currentUser.getId(), includeClosedCases);
+        List<CaseResponse> caseResponses = cases.stream()
+                .map(this::convertToResponse)
+                .toList();
         return ResponseEntity.ok(caseResponses);
+    }
+
+    /**
+     * Get unassigned cases (Admin/Manager only)
+     */
+    @GetMapping("/unassigned")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(summary = "Get unassigned cases")
+    public ResponseEntity<List<CaseResponse>> getUnassignedCases(
+            @RequestParam(required = false) String severity,
+            @RequestParam(required = false) Integer priority,
+            @RequestParam(required = false) String search,
+            @PageableDefault(size = 50, sort = "priority", direction = Sort.Direction.ASC) Pageable pageable) {
+        
+        List<Case> unassignedCases = caseService.getUnassignedCases(severity, priority, search);
+        List<CaseResponse> caseResponses = unassignedCases.stream()
+                .map(this::convertToResponse)
+                .toList();
+        return ResponseEntity.ok(caseResponses);
+    }
+
+    /**
+     * Count unassigned cases
+     */
+    @GetMapping("/unassigned/count")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST', 'VIEWER')")
+    @Operation(summary = "Count unassigned cases")
+    public ResponseEntity<CountResponse> getUnassignedCasesCount() {
+        Long count = caseService.getUnassignedCasesCount();
+        return ResponseEntity.ok(new CountResponse(count));
+    }
+
+    /**
+     * Quick action endpoint
+     */
+    @PostMapping("/quick-action")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST')")
+    @Operation(summary = "Perform quick action on case")
+    public ResponseEntity<QuickActionResponse> performQuickAction(
+            @Valid @RequestBody QuickActionRequest request,
+            Authentication authentication) {
+        
+        log.info("Performing quick action {} on case {} by user: {}", 
+                request.getAction(), request.getCaseId(), authentication.getName());
+        
+        QuickActionResponse response = caseService.performQuickAction(request);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Bulk assign cases
+     */
+    @PostMapping("/bulk/assign")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(summary = "Bulk assign cases to user")
+    public ResponseEntity<BulkOperationResponse> bulkAssignCases(
+            @Valid @RequestBody BulkAssignRequest request,
+            Authentication authentication) {
+        
+        log.info("Bulk assigning {} cases to user {} by: {}", 
+                request.getCaseIds().size(), request.getUserId(), authentication.getName());
+        
+        BulkOperationResponse response = caseService.bulkAssignCases(
+                request.getCaseIds(), request.getUserId(), request.getNotes());
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Bulk close cases
+     */
+    @PostMapping("/bulk/close")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(summary = "Bulk close cases")
+    public ResponseEntity<BulkOperationResponse> bulkCloseCases(
+            @Valid @RequestBody BulkCloseRequest request,
+            Authentication authentication) {
+        
+        log.info("Bulk closing {} cases by user: {}", 
+                request.getCaseIds().size(), authentication.getName());
+        
+        BulkOperationResponse response = caseService.bulkCloseCases(
+                request.getCaseIds(), request.getResolution(), request.getNotes());
+        return ResponseEntity.ok(response);
     }
 
     // Helper methods

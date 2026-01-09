@@ -40,6 +40,16 @@ public class CaseActivity extends BaseEntity {
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
+    @Column(name = "details", columnDefinition = "TEXT")
+    private String details;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "performed_by_id")
+    private User performedBy;
+
+    @Column(name = "performed_at")
+    private java.time.LocalDateTime performedAt;
+
     @Column(name = "ip_address")
     private String ipAddress;
 
@@ -54,6 +64,8 @@ public class CaseActivity extends BaseEntity {
         RESOLVED,
         CLOSED,
         REOPENED,
-        ESCALATED
+        ESCALATED,
+        STATUS_CHANGE,
+        MERGED
     }
 }

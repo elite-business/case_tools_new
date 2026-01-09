@@ -212,4 +212,215 @@ public interface CaseRepository extends JpaRepository<Case, Long>, JpaSpecificat
      * Find most recent case by Grafana alert UID
      */
     Optional<Case> findFirstByGrafanaAlertUidOrderByCreatedAtDesc(String grafanaAlertUid);
+
+    /**
+     * Find cases assigned to user (including team assignments)
+     * Uses JSONB assignment_info to find both direct user assignments and team assignments
+     */
+    @Query(value = """
+            SELECT DISTINCT c.* FROM casemanagement.case c
+            WHERE (
+                -- Direct user assignment
+                c.assignment_info @> jsonb_build_object('userIds', jsonb_build_array(:userId))
+                OR 
+                -- Team assignment (user is member of assigned team)
+                EXISTS (
+                    SELECT 1 FROM casemanagement.team_members tm
+                    WHERE tm.user_id = :userId
+                    AND c.assignment_info -> 'teamIds' @> to_jsonb(tm.team_id)
+                )
+            )
+            AND (:includeClosedCases = true OR c.status NOT IN ('CLOSED', 'CANCELLED', 'RESOLVED'))
+            ORDER BY 
+                CASE WHEN c.sla_breached = true THEN 0 ELSE 1 END,
+                c.priority ASC,
+                c.created_at DESC
+            """, nativeQuery = true)
+    Page<Case> findCasesByUserOrTeamAssignment(
+            @Param("userId") Long userId,
+            @Param("includeClosedCases") boolean includeClosedCases,
+            Pageable pageable);
+
+    /**
+     * Team performance related queries
+     */
+    
+    /**
+     * Count cases assigned to users in the list within date range
+     */
+    @Query(value = """
+            SELECT COUNT(c.*) FROM casemanagement.case c
+            WHERE (
+                jsonb_exists_any(c.assignment_info -> 'userIds', array[:userIds]::text[])
+                OR EXISTS (
+                    SELECT 1 FROM casemanagement.team_members tm
+                    WHERE tm.user_id = ANY(array[:userIds])
+                    AND c.assignment_info -> 'teamIds' @> to_jsonb(tm.team_id)
+                )
+            )
+            AND c.created_at BETWEEN :startDate AND :endDate
+            """, nativeQuery = true)
+    Long countByAssignedUserIdsAndCreatedAtBetween(
+            @Param("userIds") Long[] userIds,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate);
+
+    /**
+     * Count resolved cases by users within date range
+     */
+    @Query(value = """
+            SELECT COUNT(c.*) FROM casemanagement.case c
+            WHERE (
+                jsonb_exists_any(c.assignment_info -> 'userIds', array[:userIds]::text[])
+                OR EXISTS (
+                    SELECT 1 FROM casemanagement.team_members tm
+                    WHERE tm.user_id = ANY(array[:userIds])
+                    AND c.assignment_info -> 'teamIds' @> to_jsonb(tm.team_id)
+                )
+            )
+            AND c.status = :status
+            AND c.resolved_at BETWEEN :startDate AND :endDate
+            """, nativeQuery = true)
+    Long countByAssignedUserIdsAndStatusAndResolvedAtBetween(
+            @Param("userIds") Long[] userIds,
+            @Param("status") String status,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate);
+
+    /**
+     * Count cases by user IDs and status
+     */
+    @Query(value = """
+            SELECT COUNT(c.*) FROM casemanagement.case c
+            WHERE (
+                jsonb_exists_any(c.assignment_info -> 'userIds', array[:userIds]::text[])
+                OR EXISTS (
+                    SELECT 1 FROM casemanagement.team_members tm
+                    WHERE tm.user_id = ANY(array[:userIds])
+                    AND c.assignment_info -> 'teamIds' @> to_jsonb(tm.team_id)
+                )
+            )
+            AND c.status = :status
+            """, nativeQuery = true)
+    Long countByAssignedUserIdsAndStatus(
+            @Param("userIds") Long[] userIds,
+            @Param("status") String status);
+
+    /**
+     * Find resolved cases by user IDs within date range
+     */
+    @Query(value = """
+            SELECT c.* FROM casemanagement.case c
+            WHERE (
+                jsonb_exists_any(c.assignment_info -> 'userIds', array[:userIds]::text[])
+                OR EXISTS (
+                    SELECT 1 FROM casemanagement.team_members tm
+                    WHERE tm.user_id = ANY(array[:userIds])
+                    AND c.assignment_info -> 'teamIds' @> to_jsonb(tm.team_id)
+                )
+            )
+            AND c.status = :status
+            AND c.resolved_at BETWEEN :startDate AND :endDate
+            """, nativeQuery = true)
+    List<Case> findByAssignedUserIdsAndStatusAndResolvedAtBetween(
+            @Param("userIds") Long[] userIds,
+            @Param("status") String status,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate);
+
+    /**
+     * Find cases by user IDs and resolved date range
+     */
+    @Query(value = """
+            SELECT c.* FROM casemanagement.case c
+            WHERE (
+                jsonb_exists_any(c.assignment_info -> 'userIds', array[:userIds]::text[])
+                OR EXISTS (
+                    SELECT 1 FROM casemanagement.team_members tm
+                    WHERE tm.user_id = ANY(array[:userIds])
+                    AND c.assignment_info -> 'teamIds' @> to_jsonb(tm.team_id)
+                )
+            )
+            AND c.resolved_at BETWEEN :startDate AND :endDate
+            """, nativeQuery = true)
+    List<Case> findByAssignedUserIdsAndResolvedAtBetween(
+            @Param("userIds") Long[] userIds,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate);
+
+    /**
+     * Count cases with closure reason containing text
+     */
+    @Query(value = """
+            SELECT COUNT(c.*) FROM casemanagement.case c
+            WHERE (
+                jsonb_exists_any(c.assignment_info -> 'userIds', array[:userIds]::text[])
+                OR EXISTS (
+                    SELECT 1 FROM casemanagement.team_members tm
+                    WHERE tm.user_id = ANY(array[:userIds])
+                    AND c.assignment_info -> 'teamIds' @> to_jsonb(tm.team_id)
+                )
+            )
+            AND c.closure_reason ILIKE %:reason%
+            AND c.closed_at BETWEEN :startDate AND :endDate
+            """, nativeQuery = true)
+    Long countByAssignedUserIdsAndClosureReasonContaining(
+            @Param("userIds") Long[] userIds,
+            @Param("reason") String reason,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate);
+
+    /**
+     * Count active cases for single user
+     */
+    @Query(value = """
+            SELECT COUNT(c.*) FROM casemanagement.case c
+            WHERE (
+                c.assignment_info -> 'userIds' @> to_jsonb(:userId)
+                OR EXISTS (
+                    SELECT 1 FROM casemanagement.team_members tm
+                    WHERE tm.user_id = :userId
+                    AND c.assignment_info -> 'teamIds' @> to_jsonb(tm.team_id)
+                )
+            )
+            AND c.status = ANY(array[:statuses])
+            """, nativeQuery = true)
+    Long countByAssignedUserIdAndStatusIn(
+            @Param("userId") Long userId,
+            @Param("statuses") String[] statuses);
+
+    /**
+     * Find unassigned cases (no assignment_info or empty assignment_info)
+     */
+    @Query(value = """
+            SELECT c.* FROM casemanagement.case c
+            WHERE (
+                c.assignment_info IS NULL 
+                OR c.assignment_info = '{}'::jsonb
+                OR (
+                    (c.assignment_info -> 'userIds' IS NULL OR jsonb_array_length(c.assignment_info -> 'userIds') = 0)
+                    AND (c.assignment_info -> 'teamIds' IS NULL OR jsonb_array_length(c.assignment_info -> 'teamIds') = 0)
+                )
+            )
+            AND c.status NOT IN ('CLOSED', 'CANCELLED', 'RESOLVED')
+            ORDER BY c.priority ASC, c.created_at ASC
+            """, nativeQuery = true)
+    Page<Case> findUnassignedCases(Pageable pageable);
+
+    /**
+     * Count unassigned cases
+     */
+    @Query(value = """
+            SELECT COUNT(c.*) FROM casemanagement.case c
+            WHERE (
+                c.assignment_info IS NULL 
+                OR c.assignment_info = '{}'::jsonb
+                OR (
+                    (c.assignment_info -> 'userIds' IS NULL OR jsonb_array_length(c.assignment_info -> 'userIds') = 0)
+                    AND (c.assignment_info -> 'teamIds' IS NULL OR jsonb_array_length(c.assignment_info -> 'teamIds') = 0)
+                )
+            )
+            AND c.status NOT IN ('CLOSED', 'CANCELLED', 'RESOLVED')
+            """, nativeQuery = true)
+    Long countUnassignedCases();
 }

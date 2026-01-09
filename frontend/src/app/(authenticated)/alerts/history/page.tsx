@@ -47,7 +47,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { alertsApi, handleApiError } from '@/lib/api-client';
 import { AlertHistory, AlertFilters, AlertSeverity, AlertStatus } from '@/lib/types';
 import { useAuthStore } from '@/store/auth-store';
-import { isManagerOrHigher, canManageAlerts } from '@/lib/rbac';
+import { isManagerOrHigher, canManageAlerts, Permission } from '@/lib/rbac';
+import { RoleGuard } from '@/components/auth/RoleGuard';
 import dayjs from 'dayjs';
 
 const { RangePicker } = DatePicker;
@@ -100,7 +101,7 @@ export default function AlertHistoryPage() {
       // For non-admin/non-manager users, filter to only show their assigned alerts
       const queryFilters = { ...filters };
       if (!canViewAllAlerts && user?.id) {
-        queryFilters.assignedToId = user.id;
+        queryFilters.assignedTo = [user.id];
       }
       return alertsApi.getHistory(queryFilters);
     },
@@ -142,11 +143,12 @@ export default function AlertHistoryPage() {
       render: (text, record) => (
         <Space direction="vertical" size="small" style={{ width: '100%' }}>
           <Space>
-            {severityIconMap[record.severity]}
-            <strong>{text}</strong>
+            {severityIconMap[record.severity || 'LOW']}
+            <strong>{record.ruleName || record.alertName || text}</strong>
           </Space>
           <div style={{ fontSize: '12px', color: '#666' }}>
-            Rule ID: {record.ruleId}
+            {record.ruleId && `Rule ID: ${record.ruleId}`}
+            {record.grafanaRuleUid && (record.ruleId ? ` | UID: ${record.grafanaRuleUid}` : `UID: ${record.grafanaRuleUid}`)}
           </div>
         </Space>
       ),
@@ -156,9 +158,9 @@ export default function AlertHistoryPage() {
       dataIndex: 'severity',
       key: 'severity',
       width: 100,
-      render: (severity: AlertSeverity) => (
-        <Tag color={severityColorMap[severity]} style={{ fontWeight: 'bold' }}>
-          {severity}
+      render: (_, record) => (
+        <Tag color={severityColorMap[record.severity || 'LOW']} style={{ fontWeight: 'bold' }}>
+          {record.severity || 'LOW'}
         </Tag>
       ),
       filters: [
@@ -173,9 +175,9 @@ export default function AlertHistoryPage() {
       dataIndex: 'status',
       key: 'status',
       width: 120,
-      render: (status: AlertStatus) => (
-        <Tag color={statusColorMap[status]}>
-          {status.replace('_', ' ')}
+      render: (_, record) => (
+        <Tag color={statusColorMap[record.status || 'OPEN']}>
+          {(record.status || 'OPEN').replace('_', ' ')}
         </Tag>
       ),
       filters: [
@@ -192,20 +194,32 @@ export default function AlertHistoryPage() {
       key: 'triggeredAt',
       width: 150,
       valueType: 'dateTime',
-      render: (text) => (
-        <Tooltip title={dayjs(text).format('YYYY-MM-DD HH:mm:ss')}>
-          {dayjs(text).fromNow()}
-        </Tooltip>
-      ),
+      render: (_, record) => {
+        const dateValue = record.triggeredAt || record.receivedAt || record.createdAt;
+        if (!dateValue) return 'Unknown';
+        const date = dayjs(dateValue);
+        return date.isValid() ? (
+          <Tooltip title={date.format('YYYY-MM-DD HH:mm:ss')}>
+            {date.fromNow()}
+          </Tooltip>
+        ) : 'Invalid Date';
+      },
     },
     {
       title: 'Duration',
       key: 'duration',
       width: 100,
       render: (_, record) => {
-        const start = dayjs(record.triggeredAt);
+        const startDate = record.triggeredAt || record.receivedAt || record.createdAt;
+        if (!startDate) return 'N/A';
+        
+        const start = dayjs(startDate);
+        if (!start.isValid()) return 'Invalid';
+        
         const end = record.resolvedAt ? dayjs(record.resolvedAt) : dayjs();
         const duration = end.diff(start, 'minute');
+        
+        if (duration < 0) return 'N/A'; // Handle invalid duration
         
         let color = '#52c41a';
         if (duration > 60) color = '#faad14';
@@ -224,15 +238,18 @@ export default function AlertHistoryPage() {
       width: 120,
       render: (_, record) => (
         <Space direction="vertical" size="small">
-          {record.value && (
+          {record?.value != null && (
             <div style={{ fontSize: '14px', fontWeight: 'bold' }}>
-              {record.value.toLocaleString()}
+              {typeof record.value === 'number' ? record.value.toLocaleString() : record.value}
             </div>
           )}
-          {record.threshold && (
+          {record?.threshold != null && (
             <div style={{ fontSize: '12px', color: '#666' }}>
-              Threshold: {record.threshold.toLocaleString()}
+              Threshold: {typeof record.threshold === 'number' ? record.threshold.toLocaleString() : record.threshold}
             </div>
+          )}
+          {!record?.value && !record?.threshold && (
+            <div style={{ fontSize: '12px', color: '#999' }}>No metrics</div>
           )}
         </Space>
       ),
@@ -242,11 +259,11 @@ export default function AlertHistoryPage() {
       dataIndex: 'assignedTo',
       key: 'assignedTo',
       width: 120,
-      render: (assignedTo) => (
-        assignedTo ? (
+      render: (_, record) => (
+        record.assignedTo ? (
           <Space>
             <Avatar size="small" icon={<UserOutlined />} />
-            {assignedTo.username}
+            {record.assignedTo.name || record.assignedTo.username || record.assignedTo.fullName || 'Unknown User'}
           </Space>
         ) : (
           <span style={{ color: '#999' }}>Unassigned</span>
@@ -469,29 +486,41 @@ export default function AlertHistoryPage() {
             <Card title="Alert Information" size="small">
               <Descriptions column={1} size="small">
                 <Descriptions.Item label="Rule Name">
-                  <strong>{selectedAlert.ruleName}</strong>
+                  <strong>{selectedAlert.ruleName || selectedAlert.alertName}</strong>
                 </Descriptions.Item>
                 <Descriptions.Item label="Severity">
-                  <Tag color={severityColorMap[selectedAlert.severity]}>
-                    {selectedAlert.severity}
+                  <Tag color={severityColorMap[selectedAlert.severity || 'LOW']}>
+                    {selectedAlert.severity || 'LOW'}
                   </Tag>
                 </Descriptions.Item>
                 <Descriptions.Item label="Status">
-                  <Tag color={statusColorMap[selectedAlert.status]}>
-                    {selectedAlert.status.replace('_', ' ')}
+                  <Tag color={statusColorMap[selectedAlert.status || 'OPEN']}>
+                    {(selectedAlert.status || 'OPEN').replace('_', ' ')}
                   </Tag>
                 </Descriptions.Item>
-                <Descriptions.Item label="Message">
-                  {selectedAlert.message}
-                </Descriptions.Item>
-                {selectedAlert.value && (
-                  <Descriptions.Item label="Current Value">
-                    {selectedAlert.value.toLocaleString()}
+                {selectedAlert.message && (
+                  <Descriptions.Item label="Message">
+                    {selectedAlert.message}
                   </Descriptions.Item>
                 )}
-                {selectedAlert.threshold && (
+                {selectedAlert.value != null && (
+                  <Descriptions.Item label="Current Value">
+                    {typeof selectedAlert.value === 'number' ? selectedAlert.value.toLocaleString() : selectedAlert.value}
+                  </Descriptions.Item>
+                )}
+                {selectedAlert.threshold != null && (
                   <Descriptions.Item label="Threshold">
-                    {selectedAlert.threshold.toLocaleString()}
+                    {typeof selectedAlert.threshold === 'number' ? selectedAlert.threshold.toLocaleString() : selectedAlert.threshold}
+                  </Descriptions.Item>
+                )}
+                {selectedAlert.assignedTo && (
+                  <Descriptions.Item label="Assigned To">
+                    {selectedAlert.assignedTo.name || selectedAlert.assignedTo.username || selectedAlert.assignedTo.fullName}
+                  </Descriptions.Item>
+                )}
+                {selectedAlert.caseId && (
+                  <Descriptions.Item label="Related Case">
+                    Case #{selectedAlert.caseId}
                   </Descriptions.Item>
                 )}
               </Descriptions>
@@ -507,7 +536,12 @@ export default function AlertHistoryPage() {
                   <strong>Alert Triggered</strong>
                   <br />
                   <span style={{ color: '#666' }}>
-                    {dayjs(selectedAlert.triggeredAt).format('YYYY-MM-DD HH:mm:ss')}
+                    {selectedAlert.triggeredAt 
+                      ? dayjs(selectedAlert.triggeredAt).format('YYYY-MM-DD HH:mm:ss')
+                      : selectedAlert.receivedAt 
+                        ? dayjs(selectedAlert.receivedAt).format('YYYY-MM-DD HH:mm:ss')
+                        : dayjs(selectedAlert.createdAt).format('YYYY-MM-DD HH:mm:ss')
+                    }
                   </span>
                 </Timeline.Item>
                 
@@ -518,7 +552,7 @@ export default function AlertHistoryPage() {
                   >
                     <strong>Acknowledged</strong>
                     {selectedAlert.acknowledgedBy && (
-                      <span> by {selectedAlert.acknowledgedBy.username}</span>
+                      <span> by {selectedAlert.acknowledgedBy.name || selectedAlert.acknowledgedBy.username}</span>
                     )}
                     <br />
                     <span style={{ color: '#666' }}>

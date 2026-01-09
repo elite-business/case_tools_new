@@ -95,11 +95,15 @@ const rolePermissions: Record<UserRole, Permission[]> = {
   ],
   
   [UserRole.ANALYST]: [
-    // Cases (limited)
+    // Cases (can handle assigned cases)
     Permission.VIEW_CASES,
+    Permission.EDIT_CASES, // Can update case details
+    Permission.CLOSE_CASES, // Can close cases
     
-    // Alerts (view only)
+    // Alerts (can acknowledge and handle)
     Permission.VIEW_ALERTS,
+    Permission.ACKNOWLEDGE_ALERTS,
+    Permission.RESOLVE_ALERTS,
     
     // Analytics
     Permission.VIEW_ANALYTICS,

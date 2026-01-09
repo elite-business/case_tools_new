@@ -168,16 +168,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
         label: 'Analytics',
         children: [
           {
-            key: '/analytics/overview',
-            label: 'Overview',
-            onClick: () => router.push('/analytics/overview'),
+            key: '/analytics',
+            label: 'Dashboard',
+            onClick: () => router.push('/analytics'),
           },
           ...(showManagerFeatures ? [
-            {
-              key: '/analytics/trends',
-              label: 'Trends',
-              onClick: () => router.push('/analytics/trends'),
-            },
             {
               key: '/analytics/reports',
               label: 'Reports',

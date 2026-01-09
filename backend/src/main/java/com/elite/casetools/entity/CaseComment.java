@@ -24,6 +24,10 @@ public class CaseComment extends BaseEntity {
     @JoinColumn(name = "user_id")
     private User user;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "created_by")
+    private User createdBy;
+
     @Column(name = "comment", columnDefinition = "TEXT", nullable = false)
     private String comment;
 

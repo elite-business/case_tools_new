@@ -328,13 +328,14 @@ public class CaseService {
     }
 
     /**
-     * Get cases assigned to user
+     * Get cases assigned to user (including team assignments)
      */
     @Transactional(readOnly = true)
     public Page<Case> getUserCases(Long userId, Pageable pageable) {
-        User user = userRepository.findById(userId)
+        userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
-        return caseRepository.findByAssignedTo(user, pageable);
+        
+        return caseRepository.findCasesByUserOrTeamAssignment(userId, false, pageable);
     }
 
     /**
@@ -493,6 +494,198 @@ public class CaseService {
         } catch (Exception e) {
             log.warn("Failed to convert attachments to JSON: {}", e.getMessage());
             return null;
+        }
+    }
+
+    /**
+     * Get user cases with option to include closed
+     */
+    public List<Case> getUserCases(Long userId, boolean includeClosedCases) {
+        log.debug("Getting cases for user ID: {}, includeClosedCases: {}", userId, includeClosedCases);
+        
+        org.springframework.data.domain.Pageable pageable = 
+                org.springframework.data.domain.Pageable.unpaged();
+        Page<Case> cases = caseRepository.findCasesByUserOrTeamAssignment(userId, includeClosedCases, pageable);
+        return cases.getContent();
+    }
+
+    /**
+     * Get unassigned cases
+     */
+    public List<Case> getUnassignedCases(String severity, Integer priority, String search) {
+        log.debug("Getting unassigned cases with filters - severity: {}, priority: {}, search: {}", 
+                severity, priority, search);
+        
+        org.springframework.data.domain.Pageable pageable = 
+                org.springframework.data.domain.PageRequest.of(0, 100, 
+                        org.springframework.data.domain.Sort.by("priority").ascending()
+                            .and(org.springframework.data.domain.Sort.by("createdAt").descending()));
+        
+        Page<Case> unassignedPage = caseRepository.findUnassignedCases(pageable);
+        List<Case> unassignedCases = unassignedPage.getContent();
+        
+        // Apply additional filters
+        return unassignedCases.stream()
+                .filter(c -> severity == null || c.getSeverity().name().equalsIgnoreCase(severity))
+                .filter(c -> priority == null || c.getPriority().equals(priority))
+                .filter(c -> search == null || 
+                        c.getTitle().toLowerCase().contains(search.toLowerCase()) ||
+                        c.getCaseNumber().toLowerCase().contains(search.toLowerCase()) ||
+                        (c.getDescription() != null && c.getDescription().toLowerCase().contains(search.toLowerCase())))
+                .toList();
+    }
+
+    /**
+     * Count unassigned cases
+     */
+    public Long getUnassignedCasesCount() {
+        return caseRepository.countUnassignedCases();
+    }
+
+    /**
+     * Perform quick action on a case
+     */
+    public QuickActionResponse performQuickAction(QuickActionRequest request) {
+        log.info("Performing quick action {} on case {}", request.getAction(), request.getCaseId());
+        
+        User currentUser = getCurrentUser();
+        if (currentUser == null) {
+            throw new RuntimeException("Current user not found");
+        }
+        
+        return switch (request.getAction()) {
+            case "ACKNOWLEDGE" -> {
+                // Delegate to QuickActionService if available, or implement inline
+                Case caseEntity = getCaseById(request.getCaseId());
+                caseEntity.setStatus(Case.CaseStatus.IN_PROGRESS);
+                caseRepository.save(caseEntity);
+                
+                yield QuickActionResponse.builder()
+                        .success(true)
+                        .action(request.getAction())
+                        .caseId(request.getCaseId())
+                        .caseNumber(caseEntity.getCaseNumber())
+                        .message("Case acknowledged successfully")
+                        .performedBy(currentUser.getName())
+                        .performedAt(LocalDateTime.now())
+                        .build();
+            }
+            case "FALSE_POSITIVE" -> {
+                Case caseEntity = getCaseById(request.getCaseId());
+                caseEntity.setStatus(Case.CaseStatus.CLOSED);
+                caseEntity.setClosureReason("FALSE_POSITIVE: " + request.getReason());
+                caseEntity.setClosedAt(LocalDateTime.now());
+                caseRepository.save(caseEntity);
+                
+                yield QuickActionResponse.builder()
+                        .success(true)
+                        .action(request.getAction())
+                        .caseId(request.getCaseId())
+                        .caseNumber(caseEntity.getCaseNumber())
+                        .message("Case marked as false positive")
+                        .performedBy(currentUser.getName())
+                        .performedAt(LocalDateTime.now())
+                        .build();
+            }
+            case "ESCALATE" -> {
+                Case caseEntity = getCaseById(request.getCaseId());
+                caseEntity.setPriority(1); // Set to highest priority
+                caseEntity.setStatus(Case.CaseStatus.IN_PROGRESS);
+                caseRepository.save(caseEntity);
+                
+                yield QuickActionResponse.builder()
+                        .success(true)
+                        .action(request.getAction())
+                        .caseId(request.getCaseId())
+                        .caseNumber(caseEntity.getCaseNumber())
+                        .message("Case escalated to P1")
+                        .performedBy(currentUser.getName())
+                        .performedAt(LocalDateTime.now())
+                        .build();
+            }
+            case "MERGE" -> {
+                // Implement merge logic or throw not implemented
+                throw new UnsupportedOperationException("Merge action not yet implemented");
+            }
+            default -> throw new IllegalArgumentException("Unknown action: " + request.getAction());
+        };
+    }
+
+    /**
+     * Bulk assign cases to a user
+     */
+    public BulkOperationResponse bulkAssignCases(List<Long> caseIds, Long userId, String notes) {
+        log.info("Bulk assigning {} cases to user {}", caseIds.size(), userId);
+        
+        User assignee = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
+        
+        List<String> successfulCases = new ArrayList<>();
+        List<BulkOperationResponse.BulkOperationError> errors = new ArrayList<>();
+        
+        for (Long caseId : caseIds) {
+            try {
+                Case caseEntity = getCaseById(caseId);
+                
+                // Create assignment info
+                AssignmentInfo assignmentInfo = new AssignmentInfo();
+                assignmentInfo.addUser(userId);
+                
+                caseEntity.setAssignmentInfo(assignmentInfo);
+                caseEntity.setAssignedAt(LocalDateTime.now());
+                caseEntity.setStatus(Case.CaseStatus.ASSIGNED);
+                
+                caseRepository.save(caseEntity);
+                successfulCases.add(caseEntity.getCaseNumber());
+                
+            } catch (Exception e) {
+                errors.add(BulkOperationResponse.BulkOperationError.builder()
+                        .caseId(caseId)
+                        .error(e.getMessage())
+                        .build());
+            }
+        }
+        
+        if (errors.isEmpty()) {
+            return BulkOperationResponse.success(successfulCases.size(), successfulCases);
+        } else {
+            return BulkOperationResponse.mixed(successfulCases.size(), errors.size(), successfulCases, errors);
+        }
+    }
+
+    /**
+     * Bulk close cases
+     */
+    public BulkOperationResponse bulkCloseCases(List<Long> caseIds, String resolution, String notes) {
+        log.info("Bulk closing {} cases", caseIds.size());
+        
+        List<String> successfulCases = new ArrayList<>();
+        List<BulkOperationResponse.BulkOperationError> errors = new ArrayList<>();
+        
+        for (Long caseId : caseIds) {
+            try {
+                Case caseEntity = getCaseById(caseId);
+                
+                caseEntity.setStatus(Case.CaseStatus.CLOSED);
+                caseEntity.setClosureReason(resolution);
+                caseEntity.setClosedAt(LocalDateTime.now());
+                caseEntity.setResolutionActions(notes);
+                
+                caseRepository.save(caseEntity);
+                successfulCases.add(caseEntity.getCaseNumber());
+                
+            } catch (Exception e) {
+                errors.add(BulkOperationResponse.BulkOperationError.builder()
+                        .caseId(caseId)
+                        .error(e.getMessage())
+                        .build());
+            }
+        }
+        
+        if (errors.isEmpty()) {
+            return BulkOperationResponse.success(successfulCases.size(), successfulCases);
+        } else {
+            return BulkOperationResponse.mixed(successfulCases.size(), errors.size(), successfulCases, errors);
         }
     }
 }

@@ -195,6 +195,8 @@ export const casesApi = {
     apiClient.post(`/cases/${id}/close`, { resolution, closingNotes }),
   resolve: (id: number, resolution: string) => 
     apiClient.post(`/cases/${id}/resolve`, { resolution }),
+  reopen: (id: number, reason: string) => 
+    apiClient.post(`/cases/${id}/reopen`, { reason }),
   getStats: () => apiClient.get('/cases/stats'),
   getMyCases: () => apiClient.get('/cases/my-cases'),
 };
@@ -249,6 +251,11 @@ export const analyticsApi = {
       params: { format },
       responseType: 'blob'
     }),
+  
+  // Additional analytics endpoints for detailed dashboard
+  getPerformanceMetrics: (params?: any) => apiClient.get('/analytics/performance', { params }),
+  getTopAlerts: (params?: any) => apiClient.get('/analytics/top-alerts', { params }),
+  getUserActivity: (params?: any) => apiClient.get('/analytics/user-activity', { params }),
 };
 
 export const teamsApi = {

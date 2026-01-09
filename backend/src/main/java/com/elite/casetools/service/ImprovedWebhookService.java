@@ -36,7 +36,8 @@ public class ImprovedWebhookService {
     private final CaseService caseService;
     private final NotificationService notificationService;
     private final WebSocketService webSocketService;
-    private final AlertService alertService;
+    private final SimplifiedAlertService alertService;
+    private final RuleUidResolver ruleUidResolver;
 
     @Value("${application.alert.duplicate-window-minutes:5}")
     private int duplicateWindowMinutes;
@@ -84,11 +85,11 @@ public class ImprovedWebhookService {
         // Generate unique alert ID if not present
         String alertId = generateAlertId(alert);
         
-        // Extract rule UID from multiple sources (labels, generatorURL)
-        String ruleUid = extractRuleUidFromAlert(alert);
+        // Extract rule UID using RuleUidResolver
+        String ruleUid = ruleUidResolver.resolveRuleUid(alert);
         
         if (!StringUtils.hasText(ruleUid)) {
-            log.warn("Cannot determine rule UID from alert (checked labels and generatorURL), creating unassigned case: {}", 
+            log.warn("Cannot determine rule UID from alert, creating unassigned case: {}", 
                     alert.getFingerprint());
             return createUnassignedCase(alert, request, webhookTime, alertId);
         }
@@ -545,52 +546,6 @@ public class ImprovedWebhookService {
     }
 
     // Helper methods
-
-    private String extractRuleUidFromAlert(GrafanaWebhookRequest.Alert alert) {
-        // Try to get rule UID from various sources in the alert
-        Map<String, String> labels = alert.getLabels();
-        
-        // Check common label names for rule UID
-        if (labels != null) {
-            // First check for explicit rule_id
-            if (labels.containsKey("rule_id")) {
-                return labels.get("rule_id");
-            }
-            
-            for (String key : Arrays.asList("__alert_rule_uid__", "alertuid", "rule_uid")) {
-                if (labels.containsKey(key)) {
-                    return labels.get(key);
-                }
-            }
-        }
-        
-        // Extract from generator URL - format: http://localhost:9000/alerting/grafana/{rule_uid}/view
-        String generatorURL = alert.getGeneratorURL();
-        if (StringUtils.hasText(generatorURL)) {
-            // Pattern 1: /alerting/grafana/{rule_uid}/view or /alerting/grafana/{rule_uid}
-            if (generatorURL.contains("/alerting/grafana/")) {
-                int start = generatorURL.indexOf("/alerting/grafana/") + 18;
-                int end = generatorURL.indexOf("/", start);
-                
-                if (end > start) {
-                    // Found a trailing slash, extract UID between slashes
-                    return generatorURL.substring(start, end);
-                } else if (end == -1 && start < generatorURL.length()) {
-                    // No trailing slash, extract UID from start to end of URL
-                    return generatorURL.substring(start);
-                }
-            }
-            
-            // Pattern 2: ruleUID= parameter
-            if (generatorURL.contains("ruleUID=")) {
-                int start = generatorURL.indexOf("ruleUID=") + 8;
-                int end = generatorURL.indexOf("&", start);
-                return end > start ? generatorURL.substring(start, end) : generatorURL.substring(start);
-            }
-        }
-        
-        return null;
-    }
 
     private String generateCaseNumber() {
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));

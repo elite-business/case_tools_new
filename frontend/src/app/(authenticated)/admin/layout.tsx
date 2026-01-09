@@ -7,7 +7,8 @@ import {
   TeamOutlined, 
   SettingOutlined,
   DashboardOutlined,
-  SafetyCertificateOutlined
+  SafetyCertificateOutlined,
+  ExclamationCircleOutlined
 } from '@ant-design/icons';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/auth-store';
@@ -46,6 +47,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
   const menuItems = [
     {
+      key: '/admin/unassigned-cases',
+      icon: <ExclamationCircleOutlined />,
+      label: 'Unassigned Cases',
+    },
+    {
       key: '/admin/users',
       icon: <UserOutlined />,
       label: 'User Management',
@@ -77,7 +83,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   ];
 
   // Add specific breadcrumb based on current path
-  if (pathname.includes('/users')) {
+  if (pathname.includes('/unassigned-cases')) {
+    breadcrumbItems.push({ title: 'Unassigned Cases' });
+  } else if (pathname.includes('/users')) {
     breadcrumbItems.push({ title: 'User Management' });
   } else if (pathname.includes('/teams')) {
     breadcrumbItems.push({ title: 'Team Management' });

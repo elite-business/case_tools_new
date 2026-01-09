@@ -21,8 +21,11 @@ export interface Case {
   severity: CaseSeverity;
   priority: number; // Backend uses number for priority (1=Urgent, 2=High, 3=Medium, 4=Low)
   category: string;
-  assignedTo?: UserSummaryDto;
+  assignedUsers?: UserSummaryDto[]; // Backend returns this as array
+  assignedTeams?: TeamSummaryDto[]; // Backend returns this as array
+  assignedTo?: UserSummaryDto; // Keep for backwards compatibility
   assignedBy?: UserSummaryDto;
+  createdBy?: UserSummaryDto; // User who created the case
   createdAt: string;
   updatedAt: string;
   assignedAt?: string;
@@ -34,6 +37,7 @@ export interface Case {
   resolutionActions?: string;
   preventiveMeasures?: string;
   closureReason?: string;
+  resolution?: string; // Case resolution description
   estimatedLoss?: number;
   actualLoss?: number;
   affectedServices?: string;
@@ -48,20 +52,25 @@ export interface Case {
 
 export interface CaseComment {
   id: number;
-  caseId: number;
-  content: string;
-  author: User;
+  caseId?: number;
+  comment: string; // Backend uses 'comment', not 'content'
+  content?: string; // Keep for backwards compatibility
+  commentType?: string;
+  user: UserSummaryDto; // Backend returns user
+  author?: User; // Keep for backwards compatibility
   isInternal: boolean;
   createdAt: string;
-  updatedAt: string;
+  updatedAt?: string;
+  attachments?: string;
 }
 
 export interface CaseActivity {
   id: number;
-  caseId: number;
-  type: ActivityType;
+  caseId?: number;
+  activityType: string; // Backend uses string values like 'STATUS_CHANGED', 'COMMENT_ADDED'
+  fieldName?: string;
   description: string;
-  actor: User;
+  user: UserSummaryDto; // Backend returns user, not actor
   oldValue?: string;
   newValue?: string;
   createdAt: string;
@@ -91,7 +100,9 @@ export type ActivityType =
   | 'SEVERITY_CHANGED' 
   | 'UPDATED' 
   | 'CLOSED' 
-  | 'REOPENED';
+  | 'REOPENED'
+  | 'ESCALATED'
+  | 'MERGED';
 
 export interface CaseFilters {
   status?: CaseStatus[];
@@ -106,6 +117,35 @@ export interface CaseFilters {
   tags?: string[];
   dateRange?: [string, string];
   slaBreached?: boolean;
+}
+
+// Quick Actions Types
+export interface QuickActionRequest {
+  caseId: number;
+  userId: number;
+  action: 'ACKNOWLEDGE' | 'FALSE_POSITIVE' | 'ESCALATE' | 'MERGE';
+  notes?: string;
+  reason?: string;
+  secondaryCaseIds?: number[]; // For merge action
+}
+
+export interface QuickActionResponse {
+  success: boolean;
+  action: string;
+  caseId: number;
+  caseNumber: string;
+  message: string;
+  performedBy: string;
+  performedAt: string;
+  additionalData?: any;
+}
+
+export interface MergeResult {
+  primaryCase: Case;
+  mergedCount: number;
+  mergedCaseNumbers: string[];
+  performedBy: string;
+  performedAt: string;
 }
 
 export interface CaseStats {
@@ -207,19 +247,27 @@ export interface AlertRule {
 
 export interface AlertHistory {
   id: number;
-  ruleId: number;
-  ruleName: string;
-  severity: AlertSeverity;
-  status: AlertStatus;
-  triggeredAt: string;
+  fingerprint: string; // For deduplication
+  grafanaRuleUid?: string; // For finding assignment (can be null)
+  alertName: string; // Alert name for display
+  ruleName?: string; // Alternative field name
+  ruleId?: string;
+  receivedAt?: string;
+  triggeredAt?: string; // When alert was triggered
   resolvedAt?: string;
-  message: string;
+  acknowledgedAt?: string;
+  acknowledgedBy?: UserSummaryDto;
+  status: AlertStatus; // Use AlertStatus instead of AlertHistoryStatus for display
+  severity: AlertSeverity;
+  message?: string;
   value?: number;
   threshold?: number;
-  assignedTo?: User;
+  assignedTo?: UserSummaryDto;
+  caseId?: number; // Link to case if created
   notes?: string;
-  acknowledgedBy?: User;
-  acknowledgedAt?: string;
+  rawPayload?: string; // Store original for audit
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface AlertCondition {
@@ -241,7 +289,14 @@ export type AlertStatus =
   | 'OPEN' 
   | 'ACKNOWLEDGED' 
   | 'RESOLVED' 
-  | 'CLOSED';
+  | 'CLOSED'
+  | 'SUPPRESSED';
+
+export type AlertHistoryStatus = 
+  | 'RECEIVED'      // Alert received from Grafana
+  | 'CASE_CREATED'  // Case was created from this alert
+  | 'SUPPRESSED'    // Alert was suppressed (e.g., duplicate pattern)
+  | 'DUPLICATE';    // Duplicate alert within time window
 
 export interface CreateAlertRuleRequest {
   name: string;
@@ -750,6 +805,9 @@ export interface RuleAssignment {
   active: boolean;
   autoAssignEnabled: boolean;
   assignmentStrategy: AssignmentStrategy;
+  caseTemplate?: string; // JSON with title template, description, initial actions
+  escalationAfterMinutes?: number; // Auto-escalate if not acknowledged (default: 30)
+  escalationTeamId?: number; // Team to escalate to
   assignedUsers: UserSummary[];
   assignedTeams: TeamSummary[];
   assignedUserCount: number;
@@ -818,6 +876,14 @@ export interface UserSummaryDto {
   email: string;
   name: string;
   fullName?: string; // For compatibility
+}
+
+export interface TeamSummaryDto {
+  id: number;
+  name: string;
+  description?: string;
+  memberCount?: number;
+  lead?: UserSummaryDto;
 }
 
 export interface TeamSummary {

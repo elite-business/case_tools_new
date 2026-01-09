@@ -20,41 +20,24 @@ import java.util.Optional;
 public interface AlertHistoryRepository extends JpaRepository<AlertHistory, Long>, JpaSpecificationExecutor<AlertHistory> {
 
     /**
-     * Find by alert ID
+     * Find by fingerprint
      */
-    Optional<AlertHistory> findByAlertId(String alertId);
+    Optional<AlertHistory> findByFingerprint(String fingerprint);
 
     /**
-     * Find by Grafana alert ID
+     * Find by Grafana rule UID
      */
-    Optional<AlertHistory> findByGrafanaAlertId(String grafanaAlertId);
+    List<AlertHistory> findByGrafanaRuleUid(String grafanaRuleUid);
 
     /**
-     * Find by status
+     * Find alerts received between dates
      */
-    Page<AlertHistory> findByStatus(AlertHistory.AlertStatus status, Pageable pageable);
+    Page<AlertHistory> findByReceivedAtBetween(LocalDateTime startDate, LocalDateTime endDate, Pageable pageable);
 
     /**
-     * Find by severity
+     * Find alerts by status
      */
-    Page<AlertHistory> findBySeverity(AlertHistory.AlertSeverity severity, Pageable pageable);
-
-    /**
-     * Find alerts by assigned user - using JSON contains
-     */
-    @Query("SELECT a FROM AlertHistory a WHERE CAST(a.assignedTo AS string) LIKE CONCAT('%\"userIds\":[%', :userId, '%]%')")
-    Page<AlertHistory> findByAssignedUserId(@Param("userId") Long userId, Pageable pageable);
-
-    /**
-     * Find alerts created between dates
-     */
-    Page<AlertHistory> findByCreatedAtBetween(LocalDateTime startDate, LocalDateTime endDate, Pageable pageable);
-
-    /**
-     * Find open alerts older than specified time
-     */
-    @Query("SELECT a FROM AlertHistory a WHERE a.status = 'OPEN' AND a.createdAt < :cutoffTime")
-    List<AlertHistory> findStaleAlerts(@Param("cutoffTime") LocalDateTime cutoffTime);
+    List<AlertHistory> findByStatus(AlertHistory.AlertHistoryStatus status);
 
     /**
      * Count alerts by status
@@ -63,36 +46,22 @@ public interface AlertHistoryRepository extends JpaRepository<AlertHistory, Long
     List<Object[]> countAlertsByStatus();
 
     /**
-     * Count alerts by severity
-     */
-    @Query("SELECT a.severity, COUNT(a) FROM AlertHistory a GROUP BY a.severity")
-    List<Object[]> countAlertsBySeverity();
-
-    /**
      * Count alerts by status
      */
-    long countByStatus(AlertHistory.AlertStatus status);
-
-    /**
-     * Count alerts by severity
-     */
-    long countBySeverity(AlertHistory.AlertSeverity severity);
+    long countByStatus(AlertHistory.AlertHistoryStatus status);
     
     /**
-     * Count alerts by assigned user and status - using JSON contains
+     * Find alerts by case ID
      */
-    @Query("SELECT COUNT(a) FROM AlertHistory a WHERE CAST(a.assignedTo AS string) LIKE CONCAT('%\"userIds\":[%', :userId, '%]%') AND a.status IN :statuses")
-    long countByAssignedUserAndStatusIn(@Param("userId") Long userId, @Param("statuses") List<AlertHistory.AlertStatus> statuses);
+    Optional<AlertHistory> findByCaseId(Long caseId);
     
     /**
-     * Find alerts by assigned user and status - using JSON contains
+     * Find recent alerts
      */
-    @Query("SELECT a FROM AlertHistory a WHERE CAST(a.assignedTo AS string) LIKE CONCAT('%\"userIds\":[%', :userId, '%]%') AND a.status IN :statuses")
-    List<AlertHistory> findByAssignedUserAndStatusIn(@Param("userId") Long userId, @Param("statuses") List<AlertHistory.AlertStatus> statuses);
+    List<AlertHistory> findTop100ByOrderByReceivedAtDesc();
     
     /**
-     * Find recent alerts for user - using JSON contains
+     * Check if duplicate alert exists within time window
      */
-    @Query("SELECT a FROM AlertHistory a WHERE CAST(a.assignedTo AS string) LIKE CONCAT('%\"userIds\":[%', :userId, '%]%') ORDER BY a.createdAt DESC")
-    List<AlertHistory> findRecentAlertsForUser(@Param("userId") Long userId, Pageable pageable);
+    boolean existsByFingerprintAndReceivedAtAfter(String fingerprint, LocalDateTime afterTime);
 }

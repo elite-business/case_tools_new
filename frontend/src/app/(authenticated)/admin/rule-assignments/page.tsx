@@ -46,8 +46,7 @@ import {
 } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ruleAssignmentsApi } from '@/lib/api/rule-assignments';
-import { usersApi, teamsApi, grafanaApi } from '@/lib/api-client';
+import { ruleAssignmentApi as ruleAssignmentsApi, usersApi, teamsApi, grafanaApi } from '@/lib/api-client';
 import type { 
   RuleAssignment, 
   AssignRuleRequest,
@@ -90,7 +89,7 @@ export default function RuleAssignmentsPage() {
   // Fetch assignment statistics
   const { data: statsData } = useQuery({
     queryKey: ['rule-assignment-stats'],
-    queryFn: () => ruleAssignmentsApi.getAssignmentStats(),
+    queryFn: () => ruleAssignmentsApi.getStatistics(),
   });
 
   // Fetch users and teams for assignment

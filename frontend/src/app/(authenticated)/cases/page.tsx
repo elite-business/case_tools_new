@@ -81,7 +81,7 @@ export default function CasesPage() {
     delete: checkPermission(Permission.DELETE_CASES),
     assign: checkPermission(Permission.ASSIGN_CASES),
     close: checkPermission(Permission.CLOSE_CASES),
-    viewAll: checkPermission(Permission.VIEW_CASES),
+    viewAll: userRole === 'ADMIN' || userRole === 'MANAGER', // Only admin/manager can see all cases
     export: checkPermission(Permission.EXPORT_DATA),
   };
 
@@ -145,7 +145,7 @@ export default function CasesPage() {
       label: 'Assigned To',
       type: 'multiselect',
       options: users?.data?.map((user: User) => ({
-        label: user.fullName,
+        label: user.fullName || user.name || user.username,
         value: user.id,
       })) || [],
       searchable: true,
@@ -253,14 +253,14 @@ export default function CasesPage() {
       key: 'caseNumber',
       width: 140,
       fixed: 'left',
-      render: (text: string, record: Case) => (
+      render: (_, record: Case) => (
         <Space direction="vertical" size={0}>
           <Button 
             type="link" 
             onClick={() => router.push(`/cases/${record.id}`)}
             style={{ padding: 0 }}
           >
-            {text}
+            {record.caseNumber}
           </Button>
           {record.grafanaAlertId && (
             <Text type="secondary" style={{ fontSize: 11 }}>
@@ -275,9 +275,9 @@ export default function CasesPage() {
       dataIndex: 'title',
       key: 'title',
       ellipsis: true,
-      render: (text: string) => (
-        <Tooltip title={text}>
-          <span>{text}</span>
+      render: (_, record: Case) => (
+        <Tooltip title={record.title}>
+          <span>{record.title}</span>
         </Tooltip>
       ),
     },
@@ -292,12 +292,12 @@ export default function CasesPage() {
         { text: 'Medium', value: 'MEDIUM' },
         { text: 'Low', value: 'LOW' },
       ],
-      render: (severity: CaseSeverity) => (
+      render: (_, record: Case) => (
         <StatusIndicator 
           type="severity" 
-          value={severity} 
+          value={record.severity} 
           showText 
-          animated={severity === 'CRITICAL'}
+          animated={record.severity === 'CRITICAL'}
         />
       ),
     },
@@ -312,10 +312,10 @@ export default function CasesPage() {
         { text: 'Medium', value: 3 },
         { text: 'Low', value: 4 },
       ],
-      render: (priority: CasePriority) => {
-        const label = getPriorityLabel(priority);
+      render: (_, record: Case) => {
+        const label = getPriorityLabel(record.priority);
         return (
-          <Tag color={getPriorityColor(priority)}>
+          <Tag color={getPriorityColor(record.priority)}>
             {label}
           </Tag>
         );
@@ -336,46 +336,65 @@ export default function CasesPage() {
         { text: 'Closed', value: 'CLOSED' },
         { text: 'Cancelled', value: 'CANCELLED' },
       ],
-      render: (status: CaseStatus) => (
+      render: (_, record: Case) => (
         <StatusIndicator 
           type="status" 
-          value={status} 
+          value={record.status} 
           showText 
           showIcon 
-          animated={status === 'IN_PROGRESS'}
+          animated={record.status === 'IN_PROGRESS'}
         />
       ),
     },
     {
       title: 'Assigned To',
-      dataIndex: 'assignedTo',
-      key: 'assignedTo',
+      dataIndex: 'assignedUsers',
+      key: 'assignedUsers',
       width: 150,
-      render: (assignedTo: UserSummaryDto) => (
-        assignedTo ? (
-          <Space size={4}>
-            <UserOutlined style={{ fontSize: 12 }} />
-            <span>{assignedTo.name || assignedTo.fullName || assignedTo.username}</span>
-          </Space>
-        ) : (
-          <span style={{ color: '#999', fontStyle: 'italic' }}>Unassigned</span>
-        )
-      ),
+      render: (_, record: Case) => {
+        // Backend returns assignedUsers as an array, but Case type has assignedTo
+        const assignedUsers = record.assignedUsers || [];
+        const assignedTo = record.assignedTo; // Fallback for single assignment
+        
+        if (assignedUsers.length > 0) {
+          const firstUser = assignedUsers[0];
+          return (
+            <Space size={4}>
+              <UserOutlined style={{ fontSize: 12 }} />
+              <span>{firstUser.name || firstUser.fullName || firstUser.username}</span>
+              {assignedUsers.length > 1 && (
+                <span style={{ color: '#999', fontSize: 11 }}>+{assignedUsers.length - 1}</span>
+              )}
+            </Space>
+          );
+        } else if (assignedTo) {
+          return (
+            <Space size={4}>
+              <UserOutlined style={{ fontSize: 12 }} />
+              <span>{assignedTo.name || assignedTo.fullName || assignedTo.username}</span>
+            </Space>
+          );
+        } else {
+          return (
+            <span style={{ color: '#999', fontStyle: 'italic' }}>Unassigned</span>
+          );
+        }
+      },
     },
     {
       title: 'Category',
       dataIndex: 'category',
       key: 'category',
       width: 140,
-      render: (category: string) => getCategoryLabel(category),
+      render: (_, record: Case) => getCategoryLabel(record.category),
     },
     {
       title: 'SLA Status',
       dataIndex: 'slaDeadline',
       key: 'sla',
       width: 120,
-      render: (slaDeadline: string, record: Case) => {
-        const sla = getSlaStatus(slaDeadline, record.slaBreached);
+      render: (_, record: Case) => {
+        const sla = getSlaStatus(record.slaDeadline, record.slaBreached);
         return (
           <Tag color={sla.color} icon={sla.status === 'breached' ? <ExclamationCircleOutlined /> : null}>
             {sla.label}
@@ -389,7 +408,7 @@ export default function CasesPage() {
       key: 'createdAt',
       width: 150,
       sorter: true,
-      render: (date: string) => dayjs(date).format('MMM DD, YYYY HH:mm'),
+      render: (_, record: Case) => dayjs(record.createdAt).format('MMM DD, YYYY HH:mm'),
     },
     {
       title: 'Updated Date',
@@ -397,7 +416,7 @@ export default function CasesPage() {
       key: 'updatedAt',
       width: 150,
       sorter: true,
-      render: (date: string) => dayjs(date).format('MMM DD, YYYY HH:mm'),
+      render: (_, record: Case) => dayjs(record.updatedAt).format('MMM DD, YYYY HH:mm'),
     },
     {
       title: 'Actions',
@@ -420,7 +439,6 @@ export default function CasesPage() {
           actions.push({
             ...CommonActions.edit,
             onClick: () => router.push(`/cases/${record.id}?mode=edit`),
-            disabled: isClosedOrCancelled,
           });
         }
 
@@ -428,7 +446,6 @@ export default function CasesPage() {
         if (permissions.assign) {
           actions.push({
             ...CommonActions.assign,
-            disabled: isClosedOrCancelled,
             onClick: () => {
               setSelectedCase(record);
               setAssignModalVisible(true);
@@ -437,18 +454,11 @@ export default function CasesPage() {
         }
 
         // Add close action if user has permission
-        if (permissions.close) {
-          actions.push(
-            {
-              ...CommonActions.divider,
-            },
-            {
-              ...CommonActions.close,
-              disabled: isClosedOrCancelled,
-              onClick: () => handleClose(record),
-              badge: record.severity === 'CRITICAL' ? '!' : undefined,
-            }
-          );
+        if (permissions.close && !isClosedOrCancelled) {
+          actions.push({
+            ...CommonActions.close,
+            onClick: () => handleClose(record),
+          });
         }
         
         return (
@@ -464,6 +474,18 @@ export default function CasesPage() {
 
   return (
     <div style={{ padding: '0 24px' }}>
+      {/* Role-based access notification */}
+      {!permissions.viewAll && (
+        <Alert
+          message="Limited Access"
+          description="You can only view cases assigned to you or your team. To see all cases, please contact your manager."
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          closable
+        />
+      )}
+
       {/* Statistics Overview */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -706,7 +728,7 @@ export default function CasesPage() {
               preserveSelectedRowKeys: true,
               getCheckboxProps: (record: Case) => ({
                 disabled: record.status === 'CLOSED' || record.status === 'CANCELLED',
-                name: record.caseId,
+                name: record.caseNumber,
               }),
             }}
             search={false} // We have our own search
@@ -847,11 +869,11 @@ export default function CasesPage() {
                 onChange={setSelectedUserId}
                 showSearch
                 filterOption={(input, option) =>
-                  (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                  String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
                 }
                 options={users?.data?.filter((user: User) => user && user.id != null).map((user: User) => ({
                   value: user.id,
-                  label: `${user.fullName} (${user.email})`,
+                  label: `${user.fullName || user.name} (${user.email})`,
                   disabled: selectedCase?.assignedTo?.id === user.id,
                 })) || []}
                 notFoundContent="No available users"

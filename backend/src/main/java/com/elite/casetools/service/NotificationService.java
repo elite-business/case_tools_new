@@ -353,6 +353,60 @@ public class NotificationService {
     }
 
     /**
+     * Notify all team members about a case
+     */
+    @Async
+    public void notifyTeam(Case caseEntity, String message) {
+        AssignmentInfo assignmentInfo = caseEntity.getAssignmentInfo();
+        
+        // Notify all assigned users
+        if (assignmentInfo.getUserIds() != null) {
+            for (Long userId : assignmentInfo.getUserIds()) {
+                userRepository.findById(userId).ifPresent(user -> {
+                    sendNotification(user, "Team Update: " + caseEntity.getCaseNumber(), message, "TEAM_UPDATE");
+                });
+            }
+        }
+        
+        // Also send to team channels via WebSocket
+        if (assignmentInfo.getTeamIds() != null) {
+            for (Long teamId : assignmentInfo.getTeamIds()) {
+                Map<String, Object> notification = new HashMap<>();
+                notification.put("caseId", caseEntity.getId());
+                notification.put("caseNumber", caseEntity.getCaseNumber());
+                notification.put("message", message);
+                notification.put("timestamp", System.currentTimeMillis());
+                
+                webSocketService.sendToChannel("team." + teamId, "team.update", notification);
+            }
+        }
+        
+        log.info("Sent team notifications for case: {}", caseEntity.getCaseNumber());
+    }
+
+    /**
+     * Notify all managers
+     */
+    @Async
+    public void notifyManagers(String subject, String message) {
+        // Find all users with MANAGER or ADMIN role
+        // For now, send to admin channel
+        Map<String, Object> notification = new HashMap<>();
+        notification.put("subject", subject);
+        notification.put("message", message);
+        notification.put("priority", "HIGH");
+        notification.put("timestamp", System.currentTimeMillis());
+        
+        // Send to manager channel
+        webSocketService.sendToChannel("managers", "manager.alert", notification);
+        
+        // Also send to admin channel
+        webSocketService.sendToChannel("admin", "manager.alert", notification);
+        
+        log.info("Sent manager notification: {}", subject);
+    }
+
+    /**
      * Build HTML content for email
      */
     private String buildHtmlContent(String templateName, Map<String, Object> variables) {

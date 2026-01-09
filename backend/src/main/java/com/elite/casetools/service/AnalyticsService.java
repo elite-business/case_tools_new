@@ -49,23 +49,23 @@ public class AnalyticsService {
         long resolvedCases = caseRepository.countByStatus(com.elite.casetools.entity.Case.CaseStatus.RESOLVED);
         double averageResolutionTime = calculateAverageResolutionTime();
         
-        // Calculate alert metrics
-        long resolvedAlerts = alertHistoryRepository.countByStatus(com.elite.casetools.entity.AlertHistory.AlertStatus.RESOLVED);
-        long acknowledgedAlerts = alertHistoryRepository.countByStatus(com.elite.casetools.entity.AlertHistory.AlertStatus.ACKNOWLEDGED);
-        long pendingAlerts = alertHistoryRepository.countByStatus(com.elite.casetools.entity.AlertHistory.AlertStatus.OPEN);
+        // Calculate alert metrics with simplified AlertHistory
+        long casesCreatedFromAlerts = alertHistoryRepository.countByStatus(com.elite.casetools.entity.AlertHistory.AlertHistoryStatus.CASE_CREATED);
+        long suppressedAlerts = alertHistoryRepository.countByStatus(com.elite.casetools.entity.AlertHistory.AlertHistoryStatus.SUPPRESSED);
+        long duplicateAlerts = alertHistoryRepository.countByStatus(com.elite.casetools.entity.AlertHistory.AlertHistoryStatus.DUPLICATE);
         
-        double alertResolutionRate = totalAlerts > 0 ? ((double) resolvedAlerts / totalAlerts) * 100 : 0;
+        double alertToCaseRate = totalAlerts > 0 ? ((double) casesCreatedFromAlerts / totalAlerts) * 100 : 0;
         
         return AnalyticsOverviewResponse.builder()
                 .totalCases(totalCases)
                 .openCases(openCases)
-                .criticalAlerts(alertHistoryRepository.countBySeverity(com.elite.casetools.entity.AlertHistory.AlertSeverity.CRITICAL))
+                .criticalAlerts(0L) // Now tracked at Case level, not Alert level
                 .averageResolutionTime(averageResolutionTime)
                 .totalAlerts(totalAlerts)
-                .resolvedAlerts(resolvedAlerts)
-                .acknowledgedAlerts(acknowledgedAlerts)
-                .pendingAlerts(pendingAlerts)
-                .alertResolutionRate(alertResolutionRate)
+                .resolvedAlerts(casesCreatedFromAlerts) // Cases created from alerts
+                .acknowledgedAlerts(0L) // Now tracked at Case level
+                .pendingAlerts(totalAlerts - casesCreatedFromAlerts - suppressedAlerts - duplicateAlerts)
+                .alertResolutionRate(alertToCaseRate)
                 .slaBreachRate(calculateSlaBreachRate())
                 .activeUsers(activeUsers)
                 .totalReports(totalReports)
