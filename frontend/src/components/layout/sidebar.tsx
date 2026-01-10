@@ -69,22 +69,6 @@ export function Sidebar() {
           label: <Link href="/cases">All Cases</Link>,
         },
         {
-          key: '/cases/active',
-          icon: <AlertOutlined />,
-          label: <Link href="/cases/active">Active Cases</Link>,
-          badge: 5,
-        },
-        {
-          key: '/cases/my-cases',
-          icon: <UserOutlined />,
-          label: <Link href="/cases/my-cases">My Cases</Link>,
-        },
-        {
-          key: '/cases/resolved',
-          icon: <CheckCircleOutlined />,
-          label: <Link href="/cases/resolved">Resolved Cases</Link>,
-        },
-        {
           key: '/cases/new',
           icon: <PlusOutlined />,
           label: <Link href="/cases/new">Create New Case</Link>,

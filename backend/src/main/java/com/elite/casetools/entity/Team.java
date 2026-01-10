@@ -3,13 +3,12 @@ package com.elite.casetools.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Team entity representing organizational teams
- * Maps to casemanagement.team table
+ * Team entity for grouping users
+ * Maps to teams.team table
  */
 @Entity
 @Table(name = "team", schema = "casemanagement")
@@ -27,31 +26,19 @@ public class Team extends BaseEntity {
     private String description;
 
     @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "leader_id")
-    private User leader;
+    @JoinColumn(name = "lead_id")
+    private User lead;
 
     @Column(name = "department", length = 100)
     private String department;
 
-    @Column(name = "location", length = 100)
-    private String location;
-
-    @Column(name = "contact_email", length = 100)
-    private String contactEmail;
-
-    @Column(name = "phone", length = 20)
-    private String phone;
-
-    @Column(name = "active")
+    @Column(name = "is_active")
     @Builder.Default
-    private Boolean active = true;
-
-    @Column(name = "specialization", length = 100)
-    private String specialization;
+    private Boolean isActive = true;
 
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
-        name = "team_members",
+        name = "team_member",
         schema = "casemanagement",
         joinColumns = @JoinColumn(name = "team_id"),
         inverseJoinColumns = @JoinColumn(name = "user_id")
@@ -59,11 +46,26 @@ public class Team extends BaseEntity {
     @Builder.Default
     private List<User> members = new ArrayList<>();
 
-    public void addMember(User member) {
-        members.add(member);
+    // Helper methods
+    public void addMember(User user) {
+        if (!members.contains(user)) {
+            members.add(user);
+        }
     }
 
-    public void removeMember(User member) {
-        members.remove(member);
+    public void removeMember(User user) {
+        members.remove(user);
+    }
+
+    public int getMemberCount() {
+        return members != null ? members.size() : 0;
+    }
+
+    public boolean hasMember(User user) {
+        return members != null && members.contains(user);
+    }
+
+    public boolean isLead(User user) {
+        return lead != null && lead.equals(user);
     }
 }

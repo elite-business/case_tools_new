@@ -58,6 +58,13 @@ public class WebhookController {
         
         log.info("Received Grafana alert webhook with {} bytes", rawPayload.length());
 
+        // Validate signature if configured
+//        if (!webhookSecret.isEmpty() && !validateSignatureRaw(signature, rawPayload)) {
+//            log.warn("Invalid webhook signature for alert");
+//            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+//                    .body(WebhookResponse.error("Invalid signature"));
+//        }
+
         try {
             // Parse the JSON payload
             GrafanaWebhookRequest request = objectMapper.readValue(rawPayload, GrafanaWebhookRequest.class);
@@ -88,31 +95,40 @@ public class WebhookController {
     @Operation(summary = "Receive Grafana resolution webhook", description = "Process alert resolution notifications from Grafana")
     public ResponseEntity<WebhookResponse> handleGrafanaResolved(
             @RequestHeader(value = "X-Grafana-Signature", required = false) String signature,
-            @RequestBody GrafanaWebhookRequest request) {
+            @RequestBody String rawPayload) {
         
-        log.info("Received Grafana resolution webhook: {}", request.getReceiver());
+        log.info("Received Grafana resolution webhook with {} bytes", rawPayload.length());
 
         // Validate signature if configured
-        if (!webhookSecret.isEmpty() && !validateSignature(signature, request)) {
-            log.warn("Invalid webhook signature");
+        if (!webhookSecret.isEmpty() && !validateSignatureRaw(signature, rawPayload)) {
+            log.warn("Invalid webhook signature for resolved");
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(WebhookResponse.error("Invalid signature"));
         }
+        
+        try {
+            // Parse the JSON payload after validation
+            GrafanaWebhookRequest request = objectMapper.readValue(rawPayload, GrafanaWebhookRequest.class);
 
-        List<Case> resolvedCases = new ArrayList<>();
+            List<Case> resolvedCases = new ArrayList<>();
 
-        // Process each resolved alert
-        for (GrafanaWebhookRequest.Alert alert : request.getAlerts()) {
-            if ("resolved".equals(alert.getStatus())) {
-                handleResolvedAlert(alert.getFingerprint()).ifPresent(resolvedCases::add);
+            // Process each resolved alert
+            for (GrafanaWebhookRequest.Alert alert : request.getAlerts()) {
+                if ("resolved".equals(alert.getStatus())) {
+                    handleResolvedAlert(alert.getFingerprint()).ifPresent(resolvedCases::add);
+                }
             }
-        }
 
-        return ResponseEntity.ok(WebhookResponse.success(
-                resolvedCases.size() + " cases resolved",
-                resolvedCases.stream().map(this::mapCaseToResponse).toList(),
-                0
-        ));
+            return ResponseEntity.ok(WebhookResponse.success(
+                    resolvedCases.size() + " cases resolved",
+                    resolvedCases.stream().map(this::mapCaseToResponse).toList(),
+                    0
+            ));
+        } catch (Exception e) {
+            log.error("Failed to process resolved webhook", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(WebhookResponse.error("Failed to process resolved webhook"));
+        }
     }
 
     /**
@@ -137,10 +153,16 @@ public class WebhookController {
     // Helper methods
 
     /**
-     * Validate webhook signature
+     * Validate webhook signature using raw payload
      */
-    private boolean validateSignature(String signature, GrafanaWebhookRequest request) {
+    private boolean validateSignatureRaw(String signature, String rawPayload) {
         if (signature == null || signature.isEmpty()) {
+            log.debug("No signature provided in webhook request");
+            return false;
+        }
+
+        if (webhookSecret == null || webhookSecret.isEmpty()) {
+            log.warn("Webhook secret not configured, rejecting signed request");
             return false;
         }
 
@@ -150,15 +172,39 @@ public class WebhookController {
                     webhookSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
             mac.init(secretKeySpec);
             
-            // Calculate expected signature
-            byte[] hmacData = mac.doFinal(request.toString().getBytes(StandardCharsets.UTF_8));
-            String expectedSignature = Base64.getEncoder().encodeToString(hmacData);
+            // Calculate expected signature from raw payload
+            byte[] hmacData = mac.doFinal(rawPayload.getBytes(StandardCharsets.UTF_8));
+            String expectedSignature = "sha256=" + bytesToHex(hmacData);
             
-            return signature.equals(expectedSignature);
+            // Grafana sends signature as "sha256=<hex>"
+            boolean isValid = signature.equals(expectedSignature);
+            
+            if (!isValid) {
+                // Also try base64 encoding in case format varies
+                String base64Signature = Base64.getEncoder().encodeToString(hmacData);
+                isValid = signature.equals(base64Signature);
+            }
+            
+            if (!isValid) {
+                log.warn("Signature mismatch - received: {}, expected format: sha256=<hex>", signature);
+            }
+            
+            return isValid;
         } catch (NoSuchAlgorithmException | InvalidKeyException e) {
             log.error("Failed to validate webhook signature", e);
             return false;
         }
+    }
+    
+    /**
+     * Convert byte array to hex string
+     */
+    private String bytesToHex(byte[] bytes) {
+        StringBuilder result = new StringBuilder();
+        for (byte b : bytes) {
+            result.append(String.format("%02x", b));
+        }
+        return result.toString();
     }
 
     /**

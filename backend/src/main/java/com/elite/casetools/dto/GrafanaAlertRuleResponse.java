@@ -34,6 +34,7 @@ public class GrafanaAlertRuleResponse {
     private String keepFiringFor;  // Duration to keep firing
     
     // Alert states
+    private String state;  // Current state: Normal, Pending, Alerting
     private String noDataState;  // NoData, Alerting, OK
     private String execErrState;  // Error, Alerting, OK
     

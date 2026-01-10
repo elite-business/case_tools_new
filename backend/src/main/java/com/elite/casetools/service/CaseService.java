@@ -4,6 +4,7 @@ import com.elite.casetools.dto.*;
 import com.elite.casetools.entity.*;
 import com.elite.casetools.exception.ResourceNotFoundException;
 import com.elite.casetools.repository.CaseRepository;
+import com.elite.casetools.repository.TeamRepository;
 import com.elite.casetools.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +33,8 @@ public class CaseService {
     private final CaseRepository caseRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
+    private final QuickActionService quickActionService;
+    private final TeamRepository teamRepository;
 
     @Value("${application.alert.duplicate-window-minutes:5}")
     private int duplicateWindowMinutes;
@@ -210,6 +213,56 @@ public class CaseService {
     }
 
     /**
+     * Assign case to team
+     */
+    public Case assignCaseToTeam(Long caseId, Long teamId) {
+        log.info("Assigning case {} to team {}", caseId, teamId);
+
+        Case caseEntity = getCaseById(caseId);
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new ResourceNotFoundException("Team not found: " + teamId));
+        
+        // Get previous assignee names for activity logging
+        AssignmentInfo previousAssignment = caseEntity.getAssignmentInfo();
+        String oldValue = "Unassigned";
+        if (previousAssignment.hasAssignments()) {
+            List<String> assigneeNames = new ArrayList<>();
+            for (Long prevUserId : previousAssignment.getUserIds()) {
+                userRepository.findById(prevUserId).ifPresent(user -> assigneeNames.add(user.getName()));
+            }
+            for (Long prevTeamId : previousAssignment.getTeamIds()) {
+                teamRepository.findById(prevTeamId).ifPresent(prevTeam -> assigneeNames.add("Team: " + prevTeam.getName()));
+            }
+            oldValue = String.join(", ", assigneeNames);
+        }
+
+        // Create assignment info with the team
+        AssignmentInfo assignmentInfo = new AssignmentInfo();
+        assignmentInfo.addTeam(teamId);
+        
+        log.debug("Created AssignmentInfo with teamIds: {}", assignmentInfo.getTeamIds());
+        
+        caseEntity.setAssignmentInfo(assignmentInfo);
+        caseEntity.setAssignedAt(LocalDateTime.now());
+        
+        if (caseEntity.getStatus() == Case.CaseStatus.OPEN) {
+            caseEntity.setStatus(Case.CaseStatus.ASSIGNED);
+        }
+
+        Case savedCase = caseRepository.save(caseEntity);
+
+        // Add assignment activity
+        String newValue = "Team: " + team.getName();
+        addActivity(savedCase, CaseActivity.ActivityType.ASSIGNED, "assignedTo", oldValue, newValue, 
+                   "Case assigned to " + newValue);
+
+        // Send notifications to team members
+        notificationService.notifyCaseAssigned(savedCase);
+
+        return savedCase;
+    }
+
+    /**
      * Add comment to case
      */
     public CaseComment addComment(Long caseId, AddCommentRequest request) {
@@ -361,18 +414,33 @@ public class CaseService {
     }
 
     // Helper methods
-
-    private void assignCaseToUser(Case caseEntity, Long userId) {
+    public void assignCaseToUser(Case caseEntity, Long userId) {
+        log.debug("Starting assignCaseToUser for case {} and user {}", caseEntity.getCaseNumber(), userId);
+        
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
+        
+        log.debug("Found user: {} ({})", user.getName(), user.getLogin());
         
         // Create assignment info with the user
         AssignmentInfo assignmentInfo = new AssignmentInfo();
         assignmentInfo.addUser(userId);
+        
+        log.debug("Created AssignmentInfo with userIds: {}", assignmentInfo.getUserIds());
+        
         caseEntity.setAssignmentInfo(assignmentInfo);
+        
+        // Verify the assignment was set correctly
+        AssignmentInfo verifyInfo = caseEntity.getAssignmentInfo();
+        log.debug("Verified AssignmentInfo after setting - userIds: {}, hasAssignments: {}", 
+                verifyInfo.getUserIds(), verifyInfo.hasAssignments());
+        
+        log.debug("Raw assignedTo JSON after setting: {}", caseEntity.getAssignedTo());
         
         caseEntity.setAssignedAt(LocalDateTime.now());
         caseEntity.setAssignedBy(getCurrentUser());
+        
+        log.debug("Completed assignCaseToUser for case {}", caseEntity.getCaseNumber());
     }
 
     public User autoAssignCase(Case caseEntity) {
@@ -469,8 +537,32 @@ public class CaseService {
     }
 
     private User getCurrentUser() {
-        // Get from SecurityContext - placeholder for now
-        return userRepository.findById(1L).orElse(null);
+        try {
+            org.springframework.security.core.context.SecurityContext context = 
+                org.springframework.security.core.context.SecurityContextHolder.getContext();
+            org.springframework.security.core.Authentication authentication = context.getAuthentication();
+            
+            if (authentication != null && authentication.isAuthenticated() && 
+                !(authentication instanceof org.springframework.security.authentication.AnonymousAuthenticationToken)) {
+                
+                // If the principal is our User entity (from UserDetailsService)
+                if (authentication.getPrincipal() instanceof User) {
+                    return (User) authentication.getPrincipal();
+                }
+                
+                // If the principal is a string username, find the user
+                if (authentication.getPrincipal() instanceof String) {
+                    String username = (String) authentication.getPrincipal();
+                    return userRepository.findByLogin(username).orElse(null);
+                }
+            }
+            
+            log.warn("No authenticated user found in SecurityContext, using fallback user ID 1");
+            return userRepository.findById(1L).orElse(null);
+        } catch (Exception e) {
+            log.error("Error getting current user from SecurityContext: {}", e.getMessage());
+            return userRepository.findById(1L).orElse(null);
+        }
     }
 
     private CaseComment.CommentType parseCommentType(String commentType) {
@@ -543,7 +635,7 @@ public class CaseService {
     }
 
     /**
-     * Perform quick action on a case
+     * Perform quick action on a case - delegates to QuickActionService for full implementation
      */
     public QuickActionResponse performQuickAction(QuickActionRequest request) {
         log.info("Performing quick action {} on case {}", request.getAction(), request.getCaseId());
@@ -553,59 +645,42 @@ public class CaseService {
             throw new RuntimeException("Current user not found");
         }
         
+        // Delegate ALL quick actions to QuickActionService for proper implementation with notifications and activity tracking
         return switch (request.getAction()) {
-            case "ACKNOWLEDGE" -> {
-                // Delegate to QuickActionService if available, or implement inline
-                Case caseEntity = getCaseById(request.getCaseId());
-                caseEntity.setStatus(Case.CaseStatus.IN_PROGRESS);
-                caseRepository.save(caseEntity);
-                
-                yield QuickActionResponse.builder()
-                        .success(true)
-                        .action(request.getAction())
-                        .caseId(request.getCaseId())
-                        .caseNumber(caseEntity.getCaseNumber())
-                        .message("Case acknowledged successfully")
-                        .performedBy(currentUser.getName())
-                        .performedAt(LocalDateTime.now())
-                        .build();
-            }
-            case "FALSE_POSITIVE" -> {
-                Case caseEntity = getCaseById(request.getCaseId());
-                caseEntity.setStatus(Case.CaseStatus.CLOSED);
-                caseEntity.setClosureReason("FALSE_POSITIVE: " + request.getReason());
-                caseEntity.setClosedAt(LocalDateTime.now());
-                caseRepository.save(caseEntity);
-                
-                yield QuickActionResponse.builder()
-                        .success(true)
-                        .action(request.getAction())
-                        .caseId(request.getCaseId())
-                        .caseNumber(caseEntity.getCaseNumber())
-                        .message("Case marked as false positive")
-                        .performedBy(currentUser.getName())
-                        .performedAt(LocalDateTime.now())
-                        .build();
-            }
-            case "ESCALATE" -> {
-                Case caseEntity = getCaseById(request.getCaseId());
-                caseEntity.setPriority(1); // Set to highest priority
-                caseEntity.setStatus(Case.CaseStatus.IN_PROGRESS);
-                caseRepository.save(caseEntity);
-                
-                yield QuickActionResponse.builder()
-                        .success(true)
-                        .action(request.getAction())
-                        .caseId(request.getCaseId())
-                        .caseNumber(caseEntity.getCaseNumber())
-                        .message("Case escalated to P1")
-                        .performedBy(currentUser.getName())
-                        .performedAt(LocalDateTime.now())
-                        .build();
-            }
+            case "ACKNOWLEDGE" -> 
+                quickActionService.acknowledge(request.getCaseId(), currentUser.getId(), request.getReason());
+            case "FALSE_POSITIVE" -> 
+                quickActionService.markFalsePositive(request.getCaseId(), currentUser.getId(), request.getReason());
+            case "ESCALATE" -> 
+                quickActionService.escalate(request.getCaseId(), currentUser.getId(), request.getReason());
             case "MERGE" -> {
-                // Implement merge logic or throw not implemented
-                throw new UnsupportedOperationException("Merge action not yet implemented");
+                // Handle merge with proper target case IDs
+                List<Long> targetCaseIds = request.getSecondaryCaseIds() != null ? 
+                    request.getSecondaryCaseIds() : List.of();
+                
+                if (targetCaseIds.isEmpty()) {
+                    yield QuickActionResponse.builder()
+                        .success(false)
+                        .action(request.getAction())
+                        .caseId(request.getCaseId())
+                        .message("No target cases provided for merge")
+                        .performedBy(currentUser.getName())
+                        .performedAt(LocalDateTime.now())
+                        .build();
+                }
+                
+                MergeResult mergeResult = quickActionService.mergeSimilarCases(
+                    request.getCaseId(), targetCaseIds, currentUser.getId());
+                
+                yield QuickActionResponse.builder()
+                    //.success(mergeResult.isSuccess())
+                    .action("MERGE")
+                    .caseId(request.getCaseId())
+                    //.caseNumber(mergeResult.getPrimaryCaseNumber())
+                    //.message(mergeResult.getMessage())
+                    .performedBy(currentUser.getName())
+                    .performedAt(LocalDateTime.now())
+                    .build();
             }
             default -> throw new IllegalArgumentException("Unknown action: " + request.getAction());
         };
@@ -687,5 +762,9 @@ public class CaseService {
         } else {
             return BulkOperationResponse.mixed(successfulCases.size(), errors.size(), successfulCases, errors);
         }
+    }
+
+    public Case assignCaseToUser(Long caseId, Long userId) {
+        return assignCase(caseId, userId);
     }
 }

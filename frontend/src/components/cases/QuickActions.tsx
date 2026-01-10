@@ -1,174 +1,165 @@
 'use client';
 
 import React, { useState } from 'react';
-import {
-  Button,
-  Dropdown,
-  Modal,
-  Form,
-  Input,
-  Space,
-  message,
-  Select,
-  Tooltip,
-  Badge,
-  Typography,
-  Alert,
-} from 'antd';
-import {
-  CheckOutlined,
-  CloseOutlined,
-  RiseOutlined,
-  MergeOutlined,
+import { Button, Dropdown, Modal, Form, Input, Select, message, Space, Tooltip } from 'antd';
+import { 
+  CheckOutlined, 
+  CloseOutlined, 
+  ArrowUpOutlined, 
+  MergeOutlined, 
   MoreOutlined,
-  ExclamationOutlined,
-  ThunderboltOutlined,
+  ExclamationCircleOutlined,
+  UserAddOutlined,
+  CheckCircleOutlined
 } from '@ant-design/icons';
-import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { apiClient, handleApiError } from '@/lib/api-client';
-import { Case, QuickActionRequest, QuickActionResponse } from '@/lib/types';
-import { useAuthStore } from '@/store/auth-store';
-import type { MenuProps } from 'antd';
 
-const { TextArea } = Input;
-const { Text } = Typography;
+const { confirm } = Modal;
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Case, QuickActionRequest, QuickActionResponse } from '@/lib/types';
+import { casesApi, handleApiError } from '@/lib/api-client';
+import { useAuthStore } from '@/store/auth-store';
 
 interface QuickActionsProps {
   case: Case;
   onSuccess?: () => void;
+  onActionComplete?: (action: string, result: QuickActionResponse) => void;
   size?: 'small' | 'middle' | 'large';
-  type?: 'dropdown' | 'buttons';
+  type?: 'buttons' | 'dropdown';
   disabled?: boolean;
-  showLabels?: boolean;
+  compact?: boolean; // For backward compatibility
 }
 
-interface QuickActionModalProps {
+interface ActionModalProps {
   visible: boolean;
-  action: 'acknowledge' | 'false-positive' | 'escalate' | 'merge';
+  action: 'ACKNOWLEDGE' | 'FALSE_POSITIVE' | 'ESCALATE' | 'MERGE';
   case: Case;
   onCancel: () => void;
-  onSuccess: () => void;
+  onSubmit: (values: any) => void;
+  loading?: boolean;
 }
 
-function QuickActionModal({ visible, action, case: caseItem, onCancel, onSuccess }: QuickActionModalProps) {
+const ActionModal: React.FC<ActionModalProps> = ({
+  visible,
+  action,
+  case: caseData,
+  onCancel,
+  onSubmit,
+  loading
+}) => {
   const [form] = Form.useForm();
-  const [loading, setLoading] = useState(false);
-  const { user } = useAuthStore();
-
-  // Fetch available cases for merging
-  const { data: availableCases } = useQuery({
-    queryKey: ['cases', 'available-for-merge', caseItem.id],
-    queryFn: async () => {
-      const response = await apiClient.get(`/cases?status=OPEN,ASSIGNED,IN_PROGRESS&excludeId=${caseItem.id}&category=${caseItem.category}&severity=${caseItem.severity}`);
-      return response.data.content || [];
-    },
-    enabled: action === 'merge' && visible,
-  });
-
-  const handleSubmit = async (values: any) => {
-    if (!user) return;
-
-    setLoading(true);
-    try {
-      const payload: QuickActionRequest = {
-        caseId: caseItem.id,
-        userId: user.id,
-        action: action.toUpperCase().replace('-', '_') as any,
-        notes: values.notes,
-        reason: values.reason,
-        secondaryCaseIds: values.secondaryCaseIds,
-      };
-
-      let endpoint = '';
-      switch (action) {
-        case 'acknowledge':
-          endpoint = `/quick-actions/acknowledge/${caseItem.id}?userId=${user.id}&notes=${encodeURIComponent(values.notes || '')}`;
-          break;
-        case 'false-positive':
-          endpoint = `/quick-actions/false-positive/${caseItem.id}?userId=${user.id}&reason=${encodeURIComponent(values.reason)}`;
-          break;
-        case 'escalate':
-          endpoint = `/quick-actions/escalate/${caseItem.id}?userId=${user.id}&reason=${encodeURIComponent(values.reason)}`;
-          break;
-        case 'merge':
-          endpoint = `/quick-actions/merge?primaryCaseId=${caseItem.id}&secondaryCaseIds=${values.secondaryCaseIds.join(',')}&userId=${user.id}`;
-          break;
-      }
-
-      const response = await apiClient.post(endpoint);
-      
-      message.success(response.data.message || `Case ${action} completed successfully`);
-      form.resetFields();
-      onSuccess();
-    } catch (error) {
-      message.error(handleApiError(error));
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const getModalConfig = () => {
     switch (action) {
-      case 'acknowledge':
+      case 'ACKNOWLEDGE':
         return {
           title: 'Acknowledge Case',
           icon: <CheckOutlined style={{ color: '#52c41a' }} />,
-          confirmText: 'Acknowledge',
+          description: `Acknowledge case ${caseData.caseNumber} to indicate you are working on it.`,
           fields: [
-            <Form.Item key="notes" name="notes" label="Notes (Optional)">
-              <TextArea rows={3} placeholder="Add any notes about acknowledging this case..." />
-            </Form.Item>
+            {
+              name: 'notes',
+              label: 'Notes (Optional)',
+              required: false,
+              component: <Input.TextArea rows={3} placeholder="Add any notes about acknowledgment..." />
+            }
           ]
         };
       
-      case 'false-positive':
+      case 'FALSE_POSITIVE':
         return {
           title: 'Mark as False Positive',
           icon: <CloseOutlined style={{ color: '#ff4d4f' }} />,
-          confirmText: 'Mark False Positive',
+          description: `Mark case ${caseData.caseNumber} as a false positive and close it.`,
           fields: [
-            <Form.Item key="reason" name="reason" label="Reason" rules={[{ required: true, message: 'Please provide a reason' }]}>
-              <TextArea rows={3} placeholder="Explain why this is a false positive..." />
-            </Form.Item>
+            {
+              name: 'reason',
+              label: 'Reason',
+              required: true,
+              component: (
+                <Select placeholder="Select reason for false positive">
+                  <Select.Option value="duplicate_alert">Duplicate Alert</Select.Option>
+                  <Select.Option value="test_data">Test Data</Select.Option>
+                  <Select.Option value="configuration_error">Configuration Error</Select.Option>
+                  <Select.Option value="data_quality_issue">Data Quality Issue</Select.Option>
+                  <Select.Option value="threshold_too_sensitive">Threshold Too Sensitive</Select.Option>
+                  <Select.Option value="other">Other</Select.Option>
+                </Select>
+              )
+            },
+            {
+              name: 'notes',
+              label: 'Additional Notes',
+              required: false,
+              component: <Input.TextArea rows={3} placeholder="Provide details about why this is a false positive..." />
+            }
           ]
         };
       
-      case 'escalate':
+      case 'ESCALATE':
         return {
           title: 'Escalate Case',
-          icon: <RiseOutlined style={{ color: '#fa8c16' }} />,
-          confirmText: 'Escalate',
+          icon: <ArrowUpOutlined style={{ color: '#faad14' }} />,
+          description: `Escalate case ${caseData.caseNumber} to higher priority or management.`,
           fields: [
-            <Form.Item key="reason" name="reason" label="Escalation Reason" rules={[{ required: true, message: 'Please provide escalation reason' }]}>
-              <TextArea rows={3} placeholder="Explain why this case needs escalation..." />
-            </Form.Item>
+            {
+              name: 'reason',
+              label: 'Escalation Reason',
+              required: true,
+              component: (
+                <Select placeholder="Select escalation reason">
+                  <Select.Option value="sla_breach">SLA Breach</Select.Option>
+                  <Select.Option value="high_impact">High Business Impact</Select.Option>
+                  <Select.Option value="technical_complexity">Technical Complexity</Select.Option>
+                  <Select.Option value="customer_escalation">Customer Escalation</Select.Option>
+                  <Select.Option value="resource_needed">Additional Resources Needed</Select.Option>
+                  <Select.Option value="management_attention">Management Attention Required</Select.Option>
+                  <Select.Option value="other">Other</Select.Option>
+                </Select>
+              )
+            },
+            {
+              name: 'notes',
+              label: 'Escalation Details',
+              required: true,
+              component: <Input.TextArea rows={3} placeholder="Provide details about the escalation..." />
+            }
           ]
         };
       
-      case 'merge':
+      case 'MERGE':
         return {
           title: 'Merge Cases',
-          icon: <MergeOutlined style={{ color: '#722ed1' }} />,
-          confirmText: 'Merge Cases',
+          icon: <MergeOutlined style={{ color: '#1890ff' }} />,
+          description: `Merge related cases into case ${caseData.caseNumber}.`,
           fields: [
-            <Form.Item key="secondaryCaseIds" name="secondaryCaseIds" label="Cases to Merge" rules={[{ required: true, message: 'Please select cases to merge' }]}>
-              <Select
-                mode="multiple"
-                placeholder="Select similar cases to merge into this one"
-                loading={!availableCases}
-                options={availableCases?.map((c: Case) => ({
-                  value: c.id,
-                  label: `${c.caseNumber} - ${c.title}`,
-                  disabled: c.id === caseItem.id,
-                }))}
-                maxTagCount={3}
-              />
-            </Form.Item>
+            {
+              name: 'secondaryCaseIds',
+              label: 'Cases to Merge',
+              required: true,
+              component: (
+                <Select 
+                  mode="multiple"
+                  placeholder="Select cases to merge into this case"
+                  showSearch
+                  filterOption={(input, option) =>
+                    String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                  }
+                >
+                  {/* TODO: Load available cases for merging */}
+                </Select>
+              )
+            },
+            {
+              name: 'notes',
+              label: 'Merge Notes',
+              required: false,
+              component: <Input.TextArea rows={3} placeholder="Add notes about the merge..." />
+            }
           ]
         };
       
       default:
-        return { title: 'Quick Action', confirmText: 'Execute' };
+        return { title: '', icon: null, description: '', fields: [] };
     }
   };
 
@@ -176,353 +167,322 @@ function QuickActionModal({ visible, action, case: caseItem, onCancel, onSuccess
 
   return (
     <Modal
+      open={visible}
       title={
         <Space>
           {config.icon}
           {config.title}
         </Space>
       }
-      open={visible}
       onCancel={onCancel}
-      onOk={() => form.submit()}
       confirmLoading={loading}
-      okText={config.confirmText}
-      okButtonProps={{
-        type: action === 'false-positive' ? 'primary' : 'primary',
-        danger: action === 'false-positive',
+      onOk={() => {
+        form.validateFields().then((values) => {
+          onSubmit(values);
+        });
       }}
-      width={action === 'merge' ? 600 : 500}
+      okText="Confirm"
+      cancelText="Cancel"
     >
-      <Alert
-        message={
-          action === 'acknowledge' ? 'This will mark the case as acknowledged by you.' :
-          action === 'false-positive' ? 'This will close the case as a false positive. This action cannot be undone.' :
-          action === 'escalate' ? 'This will increase the case priority and assign to escalation team.' :
-          action === 'merge' ? 'This will merge selected cases into the current case. Secondary cases will be closed.' :
-          'Execute quick action on case'
-        }
-        type={action === 'false-positive' ? 'warning' : 'info'}
-        showIcon
-        style={{ marginBottom: 16 }}
-      />
-
-      <Space direction="vertical" style={{ width: '100%', marginBottom: 16 }}>
-        <Text strong>Case: {caseItem.caseNumber}</Text>
-        <Text>{caseItem.title}</Text>
-        <Space>
-          <Badge status={caseItem.severity === 'CRITICAL' ? 'error' : caseItem.severity === 'HIGH' ? 'warning' : 'processing'} text={caseItem.severity} />
-          <Badge color="blue" text={caseItem.status.replace('_', ' ')} />
-        </Space>
-      </Space>
-
-      <Form form={form} layout="vertical" onFinish={handleSubmit}>
-        {config.fields}
+      <div style={{ marginBottom: 16 }}>
+        <p>{config.description}</p>
+      </div>
+      
+      <Form form={form} layout="vertical">
+        {config.fields.map((field) => (
+          <Form.Item
+            key={field.name}
+            name={field.name}
+            label={field.label}
+            rules={field.required ? [{ required: true, message: `Please provide ${field.label.toLowerCase()}` }] : []}
+          >
+            {field.component}
+          </Form.Item>
+        ))}
       </Form>
     </Modal>
   );
-}
+};
 
-export default function QuickActions({ 
-  case: caseItem, 
-  onSuccess, 
-  size = 'small', 
+export const QuickActions: React.FC<QuickActionsProps> = ({ 
+  case: caseData, 
+  onSuccess,
+  onActionComplete,
+  size = 'small',
   type = 'dropdown',
   disabled = false,
-  showLabels = false 
-}: QuickActionsProps) {
+  compact = false // Keep for backward compatibility
+}) => {
   const [modalState, setModalState] = useState<{
     visible: boolean;
-    action: 'acknowledge' | 'false-positive' | 'escalate' | 'merge' | null;
-  }>({
-    visible: false,
-    action: null,
-  });
+    action: 'ACKNOWLEDGE' | 'FALSE_POSITIVE' | 'ESCALATE' | 'MERGE' | null;
+  }>({ visible: false, action: null });
 
+  const { user } = useAuthStore();
   const queryClient = useQueryClient();
 
-  const handleActionClick = (action: 'acknowledge' | 'false-positive' | 'escalate' | 'merge') => {
+  // Quick action mutation
+  const quickActionMutation = useMutation({
+    mutationFn: (request: QuickActionRequest) => casesApi.performQuickAction(request),
+    onSuccess: (response, variables) => {
+      const result = response.data as QuickActionResponse;
+      message.success(result.message || `${variables.action} completed successfully`);
+      
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ['cases'] });
+      queryClient.invalidateQueries({ queryKey: ['case', caseData.id] });
+      
+      // Close modal
+      setModalState({ visible: false, action: null });
+      
+      // Notify parent components
+      if (onSuccess) {
+        onSuccess();
+      }
+      if (onActionComplete) {
+        onActionComplete(variables.action, result);
+      }
+    },
+    onError: (error) => {
+      console.error('Quick action error:', error);
+      message.error('Failed to perform quick action');
+    }
+  });
+
+  const handleAction = (action: 'ACKNOWLEDGE' | 'FALSE_POSITIVE' | 'ESCALATE' | 'MERGE') => {
     setModalState({ visible: true, action });
   };
 
-  const handleModalClose = () => {
+  const handleModalSubmit = (values: any) => {
+    if (!modalState.action || !user) return;
+
+    const request: QuickActionRequest = {
+      caseId: caseData.id,
+      userId: user.id,
+      action: modalState.action,
+      notes: values.notes,
+      reason: values.reason,
+      secondaryCaseIds: values.secondaryCaseIds
+    };
+
+    quickActionMutation.mutate(request);
+  };
+
+  const handleModalCancel = () => {
     setModalState({ visible: false, action: null });
   };
 
-  const handleModalSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: ['cases'] });
-    onSuccess?.();
-    handleModalClose();
-  };
+  // Check if case is already acknowledged/closed
+  const isAcknowledged = caseData.status === 'IN_PROGRESS' || caseData.status === 'ASSIGNED';
+  const isClosed = caseData.status === 'CLOSED' || caseData.status === 'RESOLVED';
 
-  const isClosedOrCancelled = caseItem.status === 'CLOSED' || caseItem.status === 'CANCELLED';
-  const isResolved = caseItem.status === 'RESOLVED';
-  
-  const quickActionItems: MenuProps['items'] = [
+  const actions = [
     {
       key: 'acknowledge',
-      icon: <CheckOutlined style={{ color: '#52c41a' }} />,
-      label: 'Acknowledge Case',
-      onClick: () => handleActionClick('acknowledge'),
-      disabled: disabled || isClosedOrCancelled || isResolved,
+      label: 'Acknowledge',
+      icon: <CheckOutlined />,
+      disabled: disabled || isAcknowledged || isClosed,
+      action: () => handleAction('ACKNOWLEDGE'),
+      tooltip: isAcknowledged ? 'Case already acknowledged' : 'Acknowledge and start working on case'
     },
     {
       key: 'false-positive',
-      icon: <CloseOutlined style={{ color: '#ff4d4f' }} />,
-      label: 'Mark False Positive',
-      onClick: () => handleActionClick('false-positive'),
-      disabled: disabled || isClosedOrCancelled || isResolved,
+      label: 'False Positive',
+      icon: <CloseOutlined />,
+      disabled: disabled || isClosed,
+      action: () => handleAction('FALSE_POSITIVE'),
+      tooltip: 'Mark case as false positive and close it'
     },
     {
       key: 'escalate',
-      icon: <RiseOutlined style={{ color: '#fa8c16' }} />,
-      label: 'Escalate Case',
-      onClick: () => handleActionClick('escalate'),
-      disabled: disabled || isClosedOrCancelled || isResolved,
-    },
-    {
-      type: 'divider',
+      label: 'Escalate',
+      icon: <ArrowUpOutlined />,
+      disabled: disabled || isClosed,
+      action: () => handleAction('ESCALATE'),
+      tooltip: 'Escalate case to higher priority'
     },
     {
       key: 'merge',
-      icon: <MergeOutlined style={{ color: '#722ed1' }} />,
-      label: 'Merge Similar Cases',
-      onClick: () => handleActionClick('merge'),
-      disabled: disabled || isClosedOrCancelled || isResolved,
-    },
+      label: 'Merge',
+      icon: <MergeOutlined />,
+      disabled: disabled || isClosed,
+      action: () => handleAction('MERGE'),
+      tooltip: 'Merge with other related cases'
+    }
   ];
 
-  if (type === 'buttons') {
-    return (
-      <Space size="small">
-        <Tooltip title="Acknowledge Case">
-          <Button
-            size={size}
-            icon={<CheckOutlined />}
-            onClick={() => handleActionClick('acknowledge')}
-            disabled={disabled || isClosedOrCancelled || isResolved}
-            type="primary"
-            ghost
-          >
-            {showLabels && 'Acknowledge'}
-          </Button>
-        </Tooltip>
-        
-        <Tooltip title="Mark as False Positive">
-          <Button
-            size={size}
-            icon={<CloseOutlined />}
-            onClick={() => handleActionClick('false-positive')}
-            disabled={disabled || isClosedOrCancelled || isResolved}
-            danger
-            ghost
-          >
-            {showLabels && 'False Positive'}
-          </Button>
-        </Tooltip>
-        
-        <Tooltip title="Escalate Case">
-          <Button
-            size={size}
-            icon={<RiseOutlined />}
-            onClick={() => handleActionClick('escalate')}
-            disabled={disabled || isClosedOrCancelled || isResolved}
-            style={{ borderColor: '#fa8c16', color: '#fa8c16' }}
-            ghost
-          >
-            {showLabels && 'Escalate'}
-          </Button>
-        </Tooltip>
-        
-        <Tooltip title="Merge Similar Cases">
-          <Button
-            size={size}
-            icon={<MergeOutlined />}
-            onClick={() => handleActionClick('merge')}
-            disabled={disabled || isClosedOrCancelled || isResolved}
-            style={{ borderColor: '#722ed1', color: '#722ed1' }}
-            ghost
-          >
-            {showLabels && 'Merge'}
-          </Button>
-        </Tooltip>
+  if (type === 'dropdown' || compact) {
+    // Compact view - show as dropdown
+    const dropdownItems = actions.map(action => ({
+      key: action.key,
+      label: action.label,
+      icon: action.icon,
+      disabled: action.disabled,
+      onClick: action.action
+    }));
 
-        <QuickActionModal
+    return (
+      <>
+        <Dropdown
+          menu={{ items: dropdownItems }}
+          trigger={['click']}
+          placement="bottomRight"
+        >
+          <Button 
+            type="text" 
+            size={size}
+            icon={<MoreOutlined />}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </Dropdown>
+
+        <ActionModal
           visible={modalState.visible}
           action={modalState.action!}
-          case={caseItem}
-          onCancel={handleModalClose}
-          onSuccess={handleModalSuccess}
+          case={caseData}
+          onCancel={handleModalCancel}
+          onSubmit={handleModalSubmit}
+          loading={quickActionMutation.isPending}
         />
-      </Space>
+      </>
     );
   }
 
+  // Full view - show individual buttons
   return (
     <>
-      <Dropdown
-        menu={{ items: quickActionItems }}
-        trigger={['click']}
-        placement="bottomRight"
-        disabled={disabled}
-      >
-        <Button
-          size={size}
-          icon={<ThunderboltOutlined />}
-          type="primary"
-          ghost
-          disabled={disabled}
-        >
-          Quick Actions
-        </Button>
-      </Dropdown>
+      <Space size="small">
+        {actions.map(action => (
+          <Tooltip key={action.key} title={action.tooltip}>
+            <Button
+              type="text"
+              size={size}
+              icon={action.icon}
+              disabled={action.disabled}
+              onClick={(e) => {
+                e.stopPropagation();
+                action.action();
+              }}
+            >
+              {size !== 'small' && action.label}
+            </Button>
+          </Tooltip>
+        ))}
+      </Space>
 
-      <QuickActionModal
+      <ActionModal
         visible={modalState.visible}
         action={modalState.action!}
-        case={caseItem}
-        onCancel={handleModalClose}
-        onSuccess={handleModalSuccess}
+        case={caseData}
+        onCancel={handleModalCancel}
+        onSubmit={handleModalSubmit}
+        loading={quickActionMutation.isPending}
       />
     </>
   );
-}
+};
 
-// Export bulk quick actions component for multiple case selection
-export function BulkQuickActions({ 
-  selectedCases, 
-  onSuccess,
-  disabled = false 
-}: {
+// BulkQuickActions component for handling multiple selected cases
+interface BulkQuickActionsProps {
   selectedCases: Case[];
   onSuccess?: () => void;
   disabled?: boolean;
-}) {
-  const [modalState, setModalState] = useState<{
-    visible: boolean;
-    action: 'acknowledge' | 'false-positive' | 'escalate' | null;
-  }>({
-    visible: false,
-    action: null,
+}
+
+export const BulkQuickActions: React.FC<BulkQuickActionsProps> = ({
+  selectedCases,
+  onSuccess,
+  disabled = false
+}) => {
+  const { user } = useAuthStore();
+  const queryClient = useQueryClient();
+  
+  const bulkAssignMutation = useMutation({
+    mutationFn: ({ caseIds, userId, notes }: { caseIds: number[], userId: number, notes?: string }) => 
+      casesApi.bulkAssign(caseIds, userId, notes),
+    onSuccess: () => {
+      message.success(`Successfully assigned ${selectedCases.length} cases`);
+      queryClient.invalidateQueries({ queryKey: ['cases'] });
+      if (onSuccess) onSuccess();
+    },
+    onError: (error) => {
+      console.error('Bulk assign error:', error);
+      message.error('Failed to assign cases');
+    }
   });
 
-  const { user } = useAuthStore();
-  const [loading, setLoading] = useState(false);
-  const queryClient = useQueryClient();
-
-  const handleBulkAction = async (action: string, values: any) => {
-    if (!user) return;
-
-    setLoading(true);
-    try {
-      const promises = selectedCases.map(caseItem => {
-        let endpoint = '';
-        switch (action) {
-          case 'acknowledge':
-            endpoint = `/quick-actions/acknowledge/${caseItem.id}?userId=${user.id}&notes=${encodeURIComponent(values.notes || '')}`;
-            break;
-          case 'false-positive':
-            endpoint = `/quick-actions/false-positive/${caseItem.id}?userId=${user.id}&reason=${encodeURIComponent(values.reason)}`;
-            break;
-          case 'escalate':
-            endpoint = `/quick-actions/escalate/${caseItem.id}?userId=${user.id}&reason=${encodeURIComponent(values.reason)}`;
-            break;
-        }
-        return apiClient.post(endpoint);
-      });
-
-      await Promise.all(promises);
-      message.success(`${selectedCases.length} cases ${action}d successfully`);
+  const bulkCloseMutation = useMutation({
+    mutationFn: ({ caseIds, resolution, notes }: { caseIds: number[], resolution: string, notes?: string }) => 
+      casesApi.bulkClose(caseIds, resolution, notes),
+    onSuccess: () => {
+      message.success(`Successfully closed ${selectedCases.length} cases`);
       queryClient.invalidateQueries({ queryKey: ['cases'] });
-      onSuccess?.();
-      setModalState({ visible: false, action: null });
-    } catch (error) {
-      message.error(handleApiError(error));
-    } finally {
-      setLoading(false);
+      if (onSuccess) onSuccess();
+    },
+    onError: (error) => {
+      console.error('Bulk close error:', error);
+      message.error('Failed to close cases');
     }
+  });
+
+  const handleBulkAssign = () => {
+    if (!user || selectedCases.length === 0) return;
+    
+    const caseIds = selectedCases.map(c => c.id);
+    bulkAssignMutation.mutate({ 
+      caseIds, 
+      userId: user.id, 
+      notes: `Bulk assigned ${selectedCases.length} cases` 
+    });
   };
 
-  const bulkActionItems: MenuProps['items'] = [
-    {
-      key: 'bulk-acknowledge',
-      icon: <CheckOutlined style={{ color: '#52c41a' }} />,
-      label: `Acknowledge ${selectedCases.length} Cases`,
-      onClick: () => setModalState({ visible: true, action: 'acknowledge' }),
-      disabled: disabled || selectedCases.length === 0,
-    },
-    {
-      key: 'bulk-false-positive',
-      icon: <CloseOutlined style={{ color: '#ff4d4f' }} />,
-      label: `Mark ${selectedCases.length} as False Positive`,
-      onClick: () => setModalState({ visible: true, action: 'false-positive' }),
-      disabled: disabled || selectedCases.length === 0,
-    },
-    {
-      key: 'bulk-escalate',
-      icon: <RiseOutlined style={{ color: '#fa8c16' }} />,
-      label: `Escalate ${selectedCases.length} Cases`,
-      onClick: () => setModalState({ visible: true, action: 'escalate' }),
-      disabled: disabled || selectedCases.length === 0,
-    },
-  ];
+  const handleBulkClose = () => {
+    if (selectedCases.length === 0) return;
+    
+    confirm({
+      title: `Close ${selectedCases.length} cases?`,
+      icon: <ExclamationCircleOutlined />,
+      content: 'Are you sure you want to close all selected cases as resolved?',
+      onOk: () => {
+        const caseIds = selectedCases.map(c => c.id);
+        bulkCloseMutation.mutate({ 
+          caseIds, 
+          resolution: 'Bulk closed as resolved',
+          notes: `Bulk closed ${selectedCases.length} cases`
+        });
+      }
+    });
+  };
+
+  if (selectedCases.length === 0) {
+    return null;
+  }
 
   return (
-    <>
-      <Dropdown
-        menu={{ items: bulkActionItems }}
-        trigger={['click']}
-        placement="bottomLeft"
-        disabled={disabled || selectedCases.length === 0}
+    <Space>
+      <span style={{ fontSize: 12, color: '#666' }}>
+        {selectedCases.length} selected
+      </span>
+      <Button
+        size="small"
+        icon={<UserAddOutlined />}
+        onClick={handleBulkAssign}
+        loading={bulkAssignMutation.isPending}
+        disabled={disabled}
       >
-        <Button
-          icon={<ThunderboltOutlined />}
-          disabled={disabled || selectedCases.length === 0}
-        >
-          Bulk Quick Actions ({selectedCases.length})
-        </Button>
-      </Dropdown>
-
-      <Modal
-        title={`Bulk ${modalState.action} - ${selectedCases.length} Cases`}
-        open={modalState.visible}
-        onCancel={() => setModalState({ visible: false, action: null })}
-        footer={[
-          <Button key="cancel" onClick={() => setModalState({ visible: false, action: null })}>
-            Cancel
-          </Button>,
-          <Button
-            key="submit"
-            type="primary"
-            loading={loading}
-            danger={modalState.action === 'false-positive'}
-            onClick={() => {
-              // Handle form submission for bulk actions
-              const values = modalState.action === 'acknowledge' 
-                ? { notes: '' }
-                : { reason: `Bulk ${modalState.action} by ${user?.username}` };
-              handleBulkAction(modalState.action!, values);
-            }}
-          >
-            {modalState.action === 'acknowledge' ? 'Acknowledge All' :
-             modalState.action === 'false-positive' ? 'Mark All False Positive' :
-             modalState.action === 'escalate' ? 'Escalate All' : 'Execute'}
-          </Button>,
-        ]}
+        Assign to Me
+      </Button>
+      <Button
+        size="small"
+        icon={<CheckCircleOutlined />}
+        onClick={handleBulkClose}
+        loading={bulkCloseMutation.isPending}
+        disabled={disabled}
       >
-        <Alert
-          message={`This will ${modalState.action} ${selectedCases.length} selected cases`}
-          type="warning"
-          showIcon
-          style={{ marginBottom: 16 }}
-        />
-        <div style={{ maxHeight: 300, overflow: 'auto' }}>
-          {selectedCases.map(caseItem => (
-            <div key={caseItem.id} style={{ padding: 8, borderBottom: '1px solid #f0f0f0' }}>
-              <Text strong>{caseItem.caseNumber}</Text> - {caseItem.title}
-            </div>
-          ))}
-        </div>
-      </Modal>
-    </>
+        Close All
+      </Button>
+    </Space>
   );
-}
+};
+
+export default QuickActions;

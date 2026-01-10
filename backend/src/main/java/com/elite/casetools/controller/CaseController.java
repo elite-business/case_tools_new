@@ -3,6 +3,7 @@ package com.elite.casetools.controller;
 import com.elite.casetools.dto.*;
 import com.elite.casetools.entity.*;
 import com.elite.casetools.repository.UserRepository;
+import com.elite.casetools.repository.TeamRepository;
 import com.elite.casetools.service.CaseService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -36,6 +37,7 @@ public class CaseController {
 
     private final CaseService caseService;
     private final UserRepository userRepository;
+    private final TeamRepository teamRepository;
 
     /**
      * Get all cases with pagination and filtering
@@ -72,7 +74,15 @@ public class CaseController {
     @Operation(summary = "Get case by ID")
     public ResponseEntity<CaseResponse> getCaseById(@PathVariable Long id) {
         Case caseEntity = caseService.getCaseById(id);
-        return ResponseEntity.ok(convertToResponse(caseEntity));
+        CaseResponse response = convertToResponse(caseEntity);
+        
+        // Debug logging for assignment info
+        log.info("Case {} assignment info - assignedTo field: {}", 
+                caseEntity.getCaseNumber(), caseEntity.getAssignedTo());
+        log.info("Case {} assignment info - parsed users: {}, teams: {}", 
+                caseEntity.getCaseNumber(), response.getAssignedUsers(), response.getAssignedTeams());
+        
+        return ResponseEntity.ok(response);
     }
 
     /**
@@ -119,6 +129,34 @@ public class CaseController {
         
         log.info("Assigning case {} to user {} by: {}", id, request.getUserId(), authentication.getName());
         Case assignedCase = caseService.assignCase(id, request.getUserId());
+        
+        // Debug: Log the assignment result
+        log.info("After assignment - assignedTo field: {}", assignedCase.getAssignedTo());
+        AssignmentInfo info = assignedCase.getAssignmentInfo();
+        log.info("After assignment - userIds: {}, teamIds: {}", 
+                info != null ? info.getUserIds() : "null", 
+                info != null ? info.getTeamIds() : "null");
+        
+        CaseResponse response = convertToResponse(assignedCase);
+        log.info("Response - assignedUsers: {}, assignedTeams: {}", 
+                response.getAssignedUsers(), response.getAssignedTeams());
+        
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Assign case to team
+     */
+    @PostMapping("/{id}/assign-team")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(summary = "Assign case to team")
+    public ResponseEntity<CaseResponse> assignCaseToTeam(
+            @PathVariable Long id,
+            @RequestBody AssignCaseToTeamRequest request,
+            Authentication authentication) {
+        
+        log.info("Assigning case {} to team {} by: {}", id, request.getTeamId(), authentication.getName());
+        Case assignedCase = caseService.assignCaseToTeam(id, request.getTeamId());
         return ResponseEntity.ok(convertToResponse(assignedCase));
     }
 
@@ -405,19 +443,30 @@ public class CaseController {
      * Get assigned users for a case
      */
     private List<UserSummaryDto> getAssignedUsers(Case caseEntity) {
-        if (caseEntity.getAssignmentInfo() == null || !caseEntity.getAssignmentInfo().hasAssignments()) {
+        log.debug("Getting assigned users for case: {}, assignedTo field: {}",
+                caseEntity.getCaseNumber(), caseEntity.getAssignedTo());
+        
+        AssignmentInfo assignmentInfo = caseEntity.getAssignmentInfo();
+        if (assignmentInfo == null || !assignmentInfo.hasAssignments()) {
+            log.debug("No assignment info found for case: {}", caseEntity.getCaseNumber());
             return new ArrayList<>();
         }
         
+        log.debug("Assignment info for case {}: userIds={}, teamIds={}", 
+                caseEntity.getCaseNumber(), assignmentInfo.getUserIds(), assignmentInfo.getTeamIds());
+        
         List<UserSummaryDto> assignedUsers = new ArrayList<>();
-        for (Long userId : caseEntity.getAssignmentInfo().getUserIds()) {
-            userRepository.findById(userId).ifPresent(user -> 
-                assignedUsers.add(UserSummaryDto.builder()
-                    .id(user.getId())
-                    .name(user.getName())
-                    .email(user.getEmail())
-                    .build())
-            );
+        if (assignmentInfo.getUserIds() != null) {
+            for (Long userId : assignmentInfo.getUserIds()) {
+                userRepository.findById(userId).ifPresent(user -> {
+                    log.debug("Found user {} for case {}", user.getName(), caseEntity.getCaseNumber());
+                    assignedUsers.add(UserSummaryDto.builder()
+                        .id(user.getId())
+                        .name(user.getName())
+                        .email(user.getEmail())
+                        .build());
+                });
+            }
         }
         return assignedUsers;
     }
@@ -426,13 +475,185 @@ public class CaseController {
      * Get assigned teams for a case
      */
     private List<TeamSummaryDto> getAssignedTeams(Case caseEntity) {
-        if (caseEntity.getAssignmentInfo() == null || !caseEntity.getAssignmentInfo().hasAssignments()) {
+        // Debug logging
+        log.debug("Getting assigned teams for case: {}, assignedTo field: {}", 
+                caseEntity.getCaseNumber(), caseEntity.getAssignedTo());
+        
+        AssignmentInfo assignmentInfo = caseEntity.getAssignmentInfo();
+        if (assignmentInfo == null || !assignmentInfo.hasAssignments()) {
+            log.debug("No assignment info found for case: {}", caseEntity.getCaseNumber());
             return new ArrayList<>();
         }
         
+        log.debug("Assignment info for case {}: userIds={}, teamIds={}", 
+                caseEntity.getCaseNumber(), assignmentInfo.getUserIds(), assignmentInfo.getTeamIds());
+        
         List<TeamSummaryDto> assignedTeams = new ArrayList<>();
-        // TODO: Implement team lookup when Team entity is available
-        // For now, return empty list as teams are not yet implemented
+        if (assignmentInfo.getTeamIds() != null) {
+            for (Long teamId : assignmentInfo.getTeamIds()) {
+                teamRepository.findById(teamId).ifPresent(team -> {
+                    log.debug("Found team {} for case {}", team.getName(), caseEntity.getCaseNumber());
+                    assignedTeams.add(TeamSummaryDto.builder()
+                        .id(team.getId())
+                        .name(team.getName())
+                        .description(team.getDescription())
+                        .memberCount(team.getMemberCount())
+                        .department(team.getDepartment())
+                        .leadId(team.getLead() != null ? team.getLead().getId() : null)
+                        .leadName(team.getLead() != null ? team.getLead().getName() : null)
+                        .isActive(team.getIsActive())
+                        .build());
+                });
+            }
+        }
         return assignedTeams;
+    }
+
+    /**
+     * Resolve a case
+     */
+    @PostMapping("/{id}/resolve")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST')")
+    @Operation(summary = "Resolve a case", description = "Mark a case as resolved")
+    public ResponseEntity<CaseResponse> resolveCase(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> request) {
+        
+        String resolution = request.get("resolution");
+        log.info("Resolving case {} with resolution: {}", id, resolution);
+        
+        try {
+            Case caseEntity = caseService.getCaseById(id);
+            if (caseEntity == null) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            // Update case status to RESOLVED
+            caseEntity.setStatus(Case.CaseStatus.RESOLVED);
+            caseEntity.setResolvedAt(LocalDateTime.now());
+            caseEntity.setUpdatedAt(LocalDateTime.now());
+            caseEntity.setResolutionActions(resolution);
+            
+            // Add activity
+            AddCommentRequest commentRequest = new AddCommentRequest();
+            commentRequest.setContent("Case resolved: " + resolution);
+            commentRequest.setIsInternal(false);
+            caseService.addComment(id, commentRequest);
+            
+            UpdateCaseRequest updateReq = new UpdateCaseRequest();
+            updateReq.setStatus(caseEntity.getStatus());
+            Case updatedCase = caseService.updateCase(id, updateReq);
+            return ResponseEntity.ok(convertToResponse(updatedCase));
+        } catch (Exception e) {
+            log.error("Failed to resolve case", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    /**
+     * Reopen a case
+     */
+    @PostMapping("/{id}/reopen")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST')")
+    @Operation(summary = "Reopen a case", description = "Reopen a closed or resolved case")
+    public ResponseEntity<CaseResponse> reopenCase(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> request) {
+        
+        String reason = request.get("reason");
+        log.info("Reopening case {} with reason: {}", id, reason);
+        
+        try {
+            Case caseEntity = caseService.getCaseById(id);
+            if (caseEntity == null) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            // Update case status to IN_PROGRESS
+            caseEntity.setStatus(Case.CaseStatus.IN_PROGRESS);
+            caseEntity.setResolvedAt(null);
+            caseEntity.setClosedAt(null);
+            caseEntity.setUpdatedAt(LocalDateTime.now());
+            
+            // Add activity
+            AddCommentRequest reopenComment = new AddCommentRequest();
+            reopenComment.setContent("Case reopened: " + reason);
+            reopenComment.setIsInternal(false);
+            caseService.addComment(id, reopenComment);
+            
+            UpdateCaseRequest updateReq = new UpdateCaseRequest();
+            updateReq.setStatus(caseEntity.getStatus());
+            Case updatedCase = caseService.updateCase(id, updateReq);
+            return ResponseEntity.ok(convertToResponse(updatedCase));
+        } catch (Exception e) {
+            log.error("Failed to reopen case", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    /**
+     * Update case status
+     */
+    @PutMapping("/{id}/status")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST')")
+    @Operation(summary = "Update case status", description = "Update the status of a case")
+    public ResponseEntity<CaseResponse> updateCaseStatus(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> request) {
+        
+        String status = request.get("status");
+        log.info("Updating case {} status to: {}", id, status);
+        
+        try {
+            Case caseEntity = caseService.getCaseById(id);
+            if (caseEntity == null) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            // Map string status to enum - handle additional frontend statuses
+            Case.CaseStatus newStatus;
+            try {
+                // Map frontend-specific statuses to backend statuses
+                switch (status.toUpperCase()) {
+                    case "PENDING_CUSTOMER":
+                    case "PENDING_VENDOR":
+                        newStatus = Case.CaseStatus.IN_PROGRESS;
+                        // Store original status in description or notes if needed
+                        // Since metadata field doesn't exist on Case entity
+                        break;
+                    default:
+                        newStatus = Case.CaseStatus.valueOf(status.toUpperCase());
+                        break;
+                }
+            } catch (IllegalArgumentException e) {
+                log.error("Invalid status value: {}", status);
+                return ResponseEntity.badRequest().build();
+            }
+            
+            // Update status
+            caseEntity.setStatus(newStatus);
+            caseEntity.setUpdatedAt(LocalDateTime.now());
+            
+            // Update timestamps based on status
+            if (newStatus == Case.CaseStatus.RESOLVED) {
+                caseEntity.setResolvedAt(LocalDateTime.now());
+            } else if (newStatus == Case.CaseStatus.CLOSED) {
+                caseEntity.setClosedAt(LocalDateTime.now());
+            }
+            
+            // Add activity  
+            AddCommentRequest statusComment = new AddCommentRequest();
+            statusComment.setContent("Status changed to: " + status);
+            statusComment.setIsInternal(false);
+            caseService.addComment(id, statusComment);
+            
+            UpdateCaseRequest updateReq = new UpdateCaseRequest();
+            updateReq.setStatus(caseEntity.getStatus());
+            Case updatedCase = caseService.updateCase(id, updateReq);
+            return ResponseEntity.ok(convertToResponse(updatedCase));
+        } catch (Exception e) {
+            log.error("Failed to update case status", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
     }
 }

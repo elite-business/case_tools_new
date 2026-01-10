@@ -334,8 +334,10 @@ public class UserService implements UserDetailsService {
     public List<Long> getUserTeamIds(Long userId) {
         User user = getUserById(userId);
         
-        // Query teams where user is a member
-        List<Team> userTeams = teamRepository.findByMembersContaining(user);
+        // Query teams where user is a member - need to use findAll and filter manually
+        List<Team> userTeams = teamRepository.findAll().stream()
+            .filter(team -> team.getMembers().contains(user))
+            .collect(Collectors.toList());
         
         if (!userTeams.isEmpty()) {
             return userTeams.stream()

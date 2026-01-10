@@ -86,26 +86,18 @@ apiClient.interceptors.response.use(
       }
     }
     
-    // Handle 404 Not Found - return empty/default data for certain endpoints
+    // Handle 404 Not Found - log the error but don't mask it with synthetic data
+    // This ensures frontend knows when endpoints are actually missing
     if (error.response?.status === 404) {
       const url = error.config?.url || '';
       
-      // Return default data for common endpoints
-      if (url.includes('/analytics/overview')) {
-        return { data: { totalCases: 0, openCases: 0, criticalAlerts: 0, averageResolutionTime: 0 } };
+      // Log 404 errors in development for debugging
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(`[API Client] 404 Not Found: ${url}`);
       }
-      if (url.includes('/analytics/trends')) {
-        return { data: { trends: [] } };
-      }
-      if (url.includes('/cases/stats')) {
-        return { data: { total: 0, open: 0, inProgress: 0, resolved: 0, closed: 0 } };
-      }
-      if (url.includes('/alerts/history')) {
-        return { data: { content: [], totalElements: 0, totalPages: 0 } };
-      }
-      if (url.includes('/system/health')) {
-        return { data: { status: 'UNKNOWN', services: {} } };
-      }
+      
+      // Let the error propagate so frontend can handle it appropriately
+      // This prevents masking of backend issues
     }
     
     // Don't log errors for auth/me endpoint during initial load
@@ -187,6 +179,7 @@ export const casesApi = {
   update: (id: number, data: any) => apiClient.put(`/cases/${id}`, data),
   updateStatus: (id: number, status: string) => apiClient.put(`/cases/${id}/status`, { status }),
   assign: (id: number, userId: number) => apiClient.post(`/cases/${id}/assign`, { userId }),
+  assignToTeam: (id: number, teamId: number) => apiClient.post(`/cases/${id}/assign-team`, { teamId }),
   addComment: (id: number, content: string, isInternal?: boolean) => 
     apiClient.post(`/cases/${id}/comments`, { content, isInternal }),
   getComments: (id: number) => apiClient.get(`/cases/${id}/comments`),
@@ -199,6 +192,13 @@ export const casesApi = {
     apiClient.post(`/cases/${id}/reopen`, { reason }),
   getStats: () => apiClient.get('/cases/stats'),
   getMyCases: () => apiClient.get('/cases/my-cases'),
+  
+  // Quick Actions
+  performQuickAction: (data: any) => apiClient.post('/cases/quick-action', data),
+  bulkAssign: (caseIds: number[], userId: number, notes?: string) => 
+    apiClient.post('/cases/bulk/assign', { caseIds, userId, notes }),
+  bulkClose: (caseIds: number[], resolution: string, notes?: string) => 
+    apiClient.post('/cases/bulk/close', { caseIds, resolution, notes }),
 };
 
 export const alertsApi = {

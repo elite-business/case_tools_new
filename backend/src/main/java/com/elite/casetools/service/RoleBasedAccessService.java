@@ -332,7 +332,9 @@ public class RoleBasedAccessService {
      * Get team member IDs for a user (if they are team leader or member)
      */
     private List<Long> getTeamMemberIds(User user) {
-        return teamRepository.findByUser(user).stream()
+        // findByUser doesn't exist, use findAll and filter
+        return teamRepository.findAll().stream()
+                .filter(team -> team.getMembers().contains(user))
                 .flatMap(team -> team.getMembers().stream())
                 .map(User::getId)
                 .distinct()

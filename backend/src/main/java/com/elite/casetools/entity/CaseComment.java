@@ -2,6 +2,8 @@ package com.elite.casetools.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /**
  * Case comment entity for case discussions
@@ -41,6 +43,7 @@ public class CaseComment extends BaseEntity {
     private Boolean isInternal = false;
 
     @Column(name = "attachments", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
     private String attachments;
 
     public enum CommentType {

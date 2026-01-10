@@ -94,7 +94,7 @@ public class TeamPerformanceService {
      * Calculate performance for all teams
      */
     public List<TeamPerformance> calculateAllTeamsPerformance(LocalDateTime startDate, LocalDateTime endDate) {
-        List<Team> activeTeams = teamRepository.findByActive(true);
+        List<Team> activeTeams = teamRepository.findByIsActive(true);
         
         return activeTeams.stream()
                 .map(team -> calculateTeamPerformance(team.getId(), startDate, endDate))
@@ -136,7 +136,7 @@ public class TeamPerformanceService {
         LocalDateTime endDate = LocalDateTime.now();
         LocalDateTime startDate = endDate.minusWeeks(1);
         
-        List<Team> activeTeams = teamRepository.findByActive(true);
+        List<Team> activeTeams = teamRepository.findByIsActive(true);
         
         for (Team team : activeTeams) {
             try {
@@ -144,9 +144,9 @@ public class TeamPerformanceService {
                 String report = generatePerformanceReport(performance);
                 
                 // Send to team leader
-                if (team.getLeader() != null) {
+                if (team.getLead() != null) {
                     notificationService.sendNotification(
-                            team.getLeader(),
+                            team.getLead(),
                             "Weekly Team Performance Report",
                             report,
                             "PERFORMANCE_REPORT"

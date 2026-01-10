@@ -81,24 +81,10 @@ const defaultMenuItems: MenuItem[] = [
     badge: 12,
     children: [
       {
-        key: 'cases-active',
-        label: 'Active Cases',
-        icon: <ClockCircleOutlined />,
-        path: '/cases/active',
-        badge: 8,
-      },
-      {
-        key: 'cases-resolved',
-        label: 'Resolved Cases',
-        icon: <TrophyOutlined />,
-        path: '/cases/resolved',
-      },
-      {
-        key: 'cases-my',
-        label: 'My Cases',
-        icon: <StarOutlined />,
-        path: '/cases/my-cases',
-        badge: 3,
+        key: 'cases-new',
+        label: 'Create Case',
+        icon: <PlusOutlined />,
+        path: '/cases/new',
       },
     ],
   },

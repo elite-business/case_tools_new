@@ -293,8 +293,8 @@ public class QuickActionService {
         assignmentInfo.addTeam(team.getId());
         
         // Also assign to team lead if exists
-        if (team.getLeader() != null) {
-            assignmentInfo.addUser(team.getLeader().getId());
+        if (team.getLead() != null) {
+            assignmentInfo.addUser(team.getLead().getId());
         }
         
         caseEntity.setAssignmentInfo(assignmentInfo);

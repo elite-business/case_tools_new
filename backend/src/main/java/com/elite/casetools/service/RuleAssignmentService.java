@@ -309,9 +309,9 @@ public class RuleAssignmentService {
                 .description(team.getDescription())
                 .memberCount(team.getMembers() != null ? team.getMembers().size() : 0)
                 .department(team.getDepartment())
-                .leadId(team.getLeader() != null ? team.getLeader().getId() : null)
-                .leadName(team.getLeader() != null ? team.getLeader().getName() : null)
-                .isActive(team.getActive())
+                .leadId(team.getLead() != null ? team.getLead().getId() : null)
+                .leadName(team.getLead() != null ? team.getLead().getName() : null)
+                .isActive(team.getIsActive())
                 .build();
     }
 
@@ -355,8 +355,8 @@ public class RuleAssignmentService {
     private User getTeamLeadOrFirstAvailable(RuleAssignment assignment) {
         // Try to get team lead first
         for (Team team : assignment.getAssignedTeams()) {
-            if (team.getLeader() != null) {
-                return team.getLeader();
+            if (team.getLead() != null) {
+                return team.getLead();
             }
         }
         
