@@ -381,6 +381,31 @@ public class CaseService {
     }
 
     /**
+     * Get cases for a specific user (including team assignments) with filters.
+     */
+    @Transactional(readOnly = true)
+    public Page<Case> getUserCasesFiltered(Long userId, boolean includeClosedCases, CaseFilterRequest filter, Pageable pageable) {
+        userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
+
+        Pageable unSorted = org.springframework.data.domain.PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
+        return caseRepository.findCasesByUserOrTeamAssignmentFiltered(
+                userId,
+                includeClosedCases,
+                filter.getStatus(),
+                filter.getSeverity(),
+                filter.getPriorities() != null && !filter.getPriorities().isEmpty()
+                        ? filter.getPriorities().stream().map(String::valueOf).reduce((a, b) -> a + "," + b).orElse(null)
+                        : null,
+                filter.getCategory(),
+                filter.getSearch(),
+                filter.getCreatedAfter(),
+                filter.getCreatedBefore(),
+                unSorted
+        );
+    }
+
+    /**
      * Get cases assigned to user (including team assignments)
      */
     @Transactional(readOnly = true)
@@ -532,8 +557,57 @@ public class CaseService {
     }
 
     private Specification<Case> buildSpecification(CaseFilterRequest filter) {
-        // Build JPA specification from filter
-        return Specification.where(null);
+        Specification<Case> spec = Specification.where(null);
+
+        if (filter == null) {
+            return spec;
+        }
+
+        if (filter.getStatuses() != null && !filter.getStatuses().isEmpty()) {
+            spec = spec.and((root, query, cb) -> root.get("status").in(filter.getStatuses()));
+        }
+
+        if (filter.getSeverities() != null && !filter.getSeverities().isEmpty()) {
+            spec = spec.and((root, query, cb) -> root.get("severity").in(filter.getSeverities()));
+        }
+
+        if (filter.getPriorities() != null && !filter.getPriorities().isEmpty()) {
+            spec = spec.and((root, query, cb) -> root.get("priority").in(filter.getPriorities()));
+        }
+
+        if (filter.getCategory() != null && !filter.getCategory().isBlank()) {
+            try {
+                Case.Category category = Case.Category.valueOf(filter.getCategory().toUpperCase());
+                spec = spec.and((root, query, cb) -> cb.equal(root.get("category"), category));
+            } catch (IllegalArgumentException ignored) {
+                log.warn("Ignoring invalid category filter: {}", filter.getCategory());
+            }
+        }
+
+        if (filter.getSearch() != null && !filter.getSearch().isBlank()) {
+            String like = "%" + filter.getSearch().toLowerCase() + "%";
+            spec = spec.and((root, query, cb) -> cb.or(
+                    cb.like(cb.lower(root.get("title")), like),
+                    cb.like(cb.lower(root.get("caseNumber")), like),
+                    cb.like(cb.lower(cb.coalesce(root.get("description"), "")), like)
+            ));
+        }
+
+        if (filter.getCreatedAfter() != null) {
+            spec = spec.and((root, query, cb) -> cb.greaterThanOrEqualTo(root.get("createdAt"), filter.getCreatedAfter()));
+        }
+
+        if (filter.getCreatedBefore() != null) {
+            spec = spec.and((root, query, cb) -> cb.lessThanOrEqualTo(root.get("createdAt"), filter.getCreatedBefore()));
+        }
+
+        if (filter.getAssignedToId() != null) {
+            String userIdToken = "\"userIds\":";
+            String like = "%" + userIdToken + "%"+ filter.getAssignedToId() + "%";
+            spec = spec.and((root, query, cb) -> cb.like(root.get("assignedTo"), like));
+        }
+
+        return spec;
     }
 
     private User getCurrentUser() {
@@ -557,11 +631,11 @@ public class CaseService {
                 }
             }
             
-            log.warn("No authenticated user found in SecurityContext, using fallback user ID 1");
-            return userRepository.findById(1L).orElse(null);
+            log.warn("No authenticated user found in SecurityContext");
+            return null;
         } catch (Exception e) {
             log.error("Error getting current user from SecurityContext: {}", e.getMessage());
-            return userRepository.findById(1L).orElse(null);
+            return null;
         }
     }
 
@@ -648,7 +722,7 @@ public class CaseService {
         // Delegate ALL quick actions to QuickActionService for proper implementation with notifications and activity tracking
         return switch (request.getAction()) {
             case "ACKNOWLEDGE" -> 
-                quickActionService.acknowledge(request.getCaseId(), currentUser.getId(), request.getReason());
+                quickActionService.acknowledge(request.getCaseId(), currentUser.getId(), request.getNotes());
             case "FALSE_POSITIVE" -> 
                 quickActionService.markFalsePositive(request.getCaseId(), currentUser.getId(), request.getReason());
             case "ESCALATE" -> 
@@ -673,11 +747,11 @@ public class CaseService {
                     request.getCaseId(), targetCaseIds, currentUser.getId());
                 
                 yield QuickActionResponse.builder()
-                    //.success(mergeResult.isSuccess())
+                    .success(true)
                     .action("MERGE")
                     .caseId(request.getCaseId())
-                    //.caseNumber(mergeResult.getPrimaryCaseNumber())
-                    //.message(mergeResult.getMessage())
+                    .caseNumber(mergeResult.getPrimaryCase() != null ? mergeResult.getPrimaryCase().getCaseNumber() : null)
+                    .message("Merged " + mergeResult.getMergedCount() + " case(s)")
                     .performedBy(currentUser.getName())
                     .performedAt(LocalDateTime.now())
                     .build();

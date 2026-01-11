@@ -190,7 +190,7 @@ export const casesApi = {
     apiClient.post(`/cases/${id}/resolve`, { resolution }),
   reopen: (id: number, reason: string) => 
     apiClient.post(`/cases/${id}/reopen`, { reason }),
-  getStats: () => apiClient.get('/cases/stats'),
+  getStats: (period?: string) => apiClient.get('/cases/stats', { params: { period } }),
   getMyCases: () => apiClient.get('/cases/my-cases'),
   
   // Quick Actions

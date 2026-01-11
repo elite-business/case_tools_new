@@ -35,6 +35,7 @@ import {
   Switch,
   Typography,
   Progress,
+  Statistic,
   Tabs,
   Steps,
 } from 'antd';
@@ -59,13 +60,15 @@ import {
   TeamOutlined,
   BellOutlined,
   LinkOutlined,
+  BarChartOutlined,
 } from '@ant-design/icons';
 import { motion, AnimatePresence } from 'framer-motion';
-import { casesApi, usersApi, handleApiError } from '@/lib/api-client';
-import { Case, CaseComment, CaseActivity, User, CaseStatus, CaseSeverity, CasePriority, UpdateCaseRequest, CloseCaseRequest } from '@/lib/types';
+import { analyticsApi, casesApi, teamsApi, usersApi, handleApiError } from '@/lib/api-client';
+import { Case, CaseComment, CaseActivity, User, CaseStatus, UpdateCaseRequest } from '@/lib/types';
 import StatusIndicator from '@/components/ui-system/StatusIndicator';
 import ActionDropdown, { CommonActions } from '@/components/ui-system/ActionDropdown';
 import QuickActions from '@/components/cases/QuickActions';
+import { useRolePermissions } from '@/components/auth/RoleGuard';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 
@@ -80,13 +83,13 @@ const { Step } = Steps;
 // Status workflow configuration
 const statusWorkflow: Record<CaseStatus, { next: CaseStatus[]; step: number; color: string }> = {
   OPEN: { next: ['ASSIGNED', 'CANCELLED'], step: 0, color: '#1677ff' },
-  ASSIGNED: { next: ['IN_PROGRESS', 'PENDING_CUSTOMER', 'CANCELLED'], step: 1, color: '#ffa940' },
-  IN_PROGRESS: { next: ['PENDING_CUSTOMER', 'PENDING_VENDOR', 'RESOLVED'], step: 2, color: '#722ed1' },
-  PENDING_CUSTOMER: { next: ['IN_PROGRESS', 'RESOLVED'], step: 3, color: '#fadb14' },
-  PENDING_VENDOR: { next: ['IN_PROGRESS', 'RESOLVED'], step: 3, color: '#fadb14' },
-  RESOLVED: { next: ['CLOSED', 'IN_PROGRESS'], step: 4, color: '#52c41a' },
-  CLOSED: { next: [], step: 5, color: '#999999' },
-  CANCELLED: { next: ['OPEN'], step: 6, color: '#ff4d4f' },
+  ASSIGNED: { next: ['IN_PROGRESS', 'CANCELLED'], step: 1, color: '#ffa940' },
+  IN_PROGRESS: { next: ['RESOLVED'], step: 2, color: '#722ed1' },
+  RESOLVED: { next: ['CLOSED', 'IN_PROGRESS'], step: 3, color: '#52c41a' },
+  CLOSED: { next: [], step: 4, color: '#999999' },
+  CANCELLED: { next: ['OPEN'], step: 5, color: '#ff4d4f' },
+  PENDING_CUSTOMER: { next: ['IN_PROGRESS', 'RESOLVED'], step: 2, color: '#fadb14' },
+  PENDING_VENDOR: { next: ['IN_PROGRESS', 'RESOLVED'], step: 2, color: '#fadb14' },
 };
 
 export default function CaseDetailPage() {
@@ -104,8 +107,14 @@ export default function CaseDetailPage() {
   const [assignModalVisible, setAssignModalVisible] = useState(false);
   const [closeModalVisible, setCloseModalVisible] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<number>();
+  const [assignmentType, setAssignmentType] = useState<'user' | 'team'>('user');
+  const [selectedTeamId, setSelectedTeamId] = useState<number>();
   const [isInternalComment, setIsInternalComment] = useState(false);
   const [activeTab, setActiveTab] = useState('details');
+  const [performanceScope, setPerformanceScope] = useState<'system' | 'team'>('system');
+  const [performancePeriod, setPerformancePeriod] = useState('30d');
+  const { userRole, hasPermission: checkPermission } = useRolePermissions();
+  const canViewPerformance = userRole === 'ADMIN' || userRole === 'MANAGER';
 
   // Fetch case details
   const { data: caseData, isLoading, error } = useQuery({
@@ -132,6 +141,25 @@ export default function CaseDetailPage() {
   const { data: users } = useQuery({
     queryKey: ['users', 'available-for-assignment'],
     queryFn: () => usersApi.getAvailableForAssignment(),
+  });
+
+  // Fetch available teams for assignment
+  const { data: teams } = useQuery({
+    queryKey: ['teams', 'all'],
+    queryFn: () => teamsApi.getAll(),
+  });
+
+  // Performance metrics (admin/manager only)
+  const { data: caseStatsData } = useQuery({
+    queryKey: ['cases', 'stats', performancePeriod],
+    queryFn: () => casesApi.getStats(performancePeriod),
+    enabled: canViewPerformance && performanceScope === 'system',
+  });
+
+  const { data: teamPerformanceData } = useQuery({
+    queryKey: ['analytics', 'team-performance', performancePeriod, selectedTeamId],
+    queryFn: () => analyticsApi.getTeamPerformance({ period: performancePeriod, teamId: selectedTeamId }),
+    enabled: canViewPerformance && performanceScope === 'team' && !!selectedTeamId,
   });
 
   // Update case mutation
@@ -193,6 +221,27 @@ export default function CaseDetailPage() {
   });
 
   const caseDetails: Case | null = caseData?.data || null;
+  const caseStats = caseStatsData?.data;
+  const teamPerformance = teamPerformanceData?.data?.overall
+    || teamPerformanceData?.data?.teams?.find((team: any) => team.teamId === selectedTeamId)
+    || teamPerformanceData?.data?.teams?.[0];
+  const slaDeadline = caseDetails?.slaDeadline ? dayjs(caseDetails.slaDeadline) : null;
+  const slaTargetHours = caseDetails && slaDeadline
+    ? Math.max(1, slaDeadline.diff(dayjs(caseDetails.createdAt), 'hour', true))
+    : 24;
+  const slaElapsedHours = caseDetails ? dayjs().diff(dayjs(caseDetails.createdAt), 'hour', true) : 0;
+  const slaPercent = Math.min(100, (slaElapsedHours / slaTargetHours) * 100);
+  const isSlaBreached = caseDetails?.slaBreached || (slaDeadline ? dayjs().isAfter(slaDeadline) : false);
+  const toHours = (value?: number) => value ? Number((value / 60).toFixed(1)) : 0;
+
+  useEffect(() => {
+    if (caseDetails?.assignedTeams && caseDetails.assignedTeams.length > 0 && !selectedTeamId) {
+      setSelectedTeamId(caseDetails.assignedTeams[0].id);
+    }
+    if (performanceScope === 'team' && (!caseDetails?.assignedTeams || caseDetails.assignedTeams.length === 0)) {
+      setPerformanceScope('system');
+    }
+  }, [caseDetails, selectedTeamId, performanceScope]);
 
   useEffect(() => {
     if (caseDetails && editing) {
@@ -228,8 +277,22 @@ export default function CaseDetailPage() {
   };
 
   const handleAssign = async () => {
-    if (!selectedUserId) return;
-    assignCaseMutation.mutate({ id: Number(caseId), userId: selectedUserId });
+    if (assignmentType === 'user') {
+      if (!selectedUserId) return;
+      assignCaseMutation.mutate({ id: Number(caseId), userId: selectedUserId });
+      return;
+    }
+    if (!selectedTeamId) return;
+    try {
+      await casesApi.assignToTeam(Number(caseId), selectedTeamId);
+      message.success('Case assigned to team successfully');
+      setAssignModalVisible(false);
+      setSelectedTeamId(undefined);
+      setAssignmentType('user');
+      queryClient.invalidateQueries({ queryKey: ['cases', caseId] });
+    } catch (error) {
+      message.error(handleApiError(error));
+    }
   };
 
   const handleAddComment = async () => {
@@ -352,7 +415,7 @@ export default function CaseDetailPage() {
       key: 'resolve',
       icon: <CheckCircleOutlined />,
       label: 'Mark as Resolved',
-      disabled: !['ASSIGNED', 'IN_PROGRESS', 'PENDING_CUSTOMER', 'PENDING_VENDOR'].includes(caseDetails.status),
+      disabled: !['ASSIGNED', 'IN_PROGRESS'].includes(caseDetails.status),
       onClick: () => handleStatusChange('RESOLVED'),
     },
     {
@@ -410,17 +473,17 @@ export default function CaseDetailPage() {
               <Col>
                 <Space direction="vertical" size={0} style={{ textAlign: 'right' }}>
                   <Text type="secondary" style={{ fontSize: 12 }}>
-                    SLA Target: 24h
+                    SLA Target: {Math.round(slaTargetHours)}h
                   </Text>
                   <Progress 
-                    percent={Math.min(100, (dayjs().diff(dayjs(caseDetails.createdAt), 'hours') / 24) * 100)}
+                    percent={slaPercent}
                     size="small"
-                    status={dayjs().diff(dayjs(caseDetails.createdAt), 'hours') > 24 ? 'exception' : 'active'}
+                    status={isSlaBreached ? 'exception' : 'active'}
                     showInfo={false}
                     strokeWidth={4}
                   />
                   <Text style={{ fontSize: 12 }}>
-                    {dayjs().diff(dayjs(caseDetails.createdAt), 'hours')}h elapsed
+                    {Math.round(slaElapsedHours)}h elapsed
                   </Text>
                 </Space>
               </Col>
@@ -512,7 +575,7 @@ export default function CaseDetailPage() {
                             label: 'Mark as Resolved',
                             icon: <CheckCircleOutlined />,
                             onClick: () => handleStatusChange('RESOLVED'),
-                            disabled: !['ASSIGNED', 'IN_PROGRESS', 'PENDING_CUSTOMER', 'PENDING_VENDOR'].includes(caseDetails.status),
+                            disabled: !['ASSIGNED', 'IN_PROGRESS'].includes(caseDetails.status),
                           },
                           {
                             key: 'close',
@@ -562,10 +625,10 @@ export default function CaseDetailPage() {
                       name="priority"
                       label="Priority"
                       options={[
-                        { label: 'Low', value: 'LOW' },
-                        { label: 'Medium', value: 'MEDIUM' },
-                        { label: 'High', value: 'HIGH' },
-                        { label: 'Urgent', value: 'URGENT' },
+                        { label: 'Urgent', value: 1 },
+                        { label: 'High', value: 2 },
+                        { label: 'Medium', value: 3 },
+                        { label: 'Low', value: 4 },
                       ]}
                       rules={[{ required: true }]}
                     />
@@ -578,8 +641,6 @@ export default function CaseDetailPage() {
                         { label: 'Open', value: 'OPEN' },
                         { label: 'Assigned', value: 'ASSIGNED' },
                         { label: 'In Progress', value: 'IN_PROGRESS' },
-                        { label: 'Pending Customer', value: 'PENDING_CUSTOMER' },
-                        { label: 'Pending Vendor', value: 'PENDING_VENDOR' },
                         { label: 'Resolved', value: 'RESOLVED' },
                         { label: 'Closed', value: 'CLOSED' },
                         { label: 'Cancelled', value: 'CANCELLED' },
@@ -641,29 +702,45 @@ export default function CaseDetailPage() {
                   {caseDetails.category || 'Not specified'}
                 </Descriptions.Item>
                 <Descriptions.Item label="Assigned To">
-                  {caseDetails.assignedUsers && caseDetails.assignedUsers.length > 0 ? (
-                    <Space direction="vertical" size="small">
-                      {caseDetails.assignedUsers.map(user => (
-                        <Space key={user.id}>
-                          <Avatar size="small" icon={<UserOutlined />} />
-                          {user.name || user.fullName || user.username}
-                          {user.email && <span style={{ color: '#999', fontSize: 12 }}>({user.email})</span>}
-                        </Space>
-                      ))}
-                    </Space>
-                  ) : caseDetails.assignedTo ? (
-                    <Space>
-                      <Avatar size="small" icon={<UserOutlined />} />
-                      {caseDetails.assignedTo.name || caseDetails.assignedTo.fullName || caseDetails.assignedTo.username}
-                    </Space>
-                  ) : (
-                    <span style={{ color: '#999' }}>Unassigned</span>
-                  )}
+                  <Space direction="vertical" size="small">
+                    {caseDetails.assignedUsers && caseDetails.assignedUsers.length > 0 && (
+                      <div>
+                        <Text type="secondary">Users</Text>
+                        {caseDetails.assignedUsers.map(user => (
+                          <Space key={user.id} style={{ display: 'block' }}>
+                            <Avatar size="small" icon={<UserOutlined />} />
+                            {user.name || user.fullName || user.username}
+                            {user.email && <span style={{ color: '#999', fontSize: 12 }}>({user.email})</span>}
+                          </Space>
+                        ))}
+                      </div>
+                    )}
+                    {caseDetails.assignedTeams && caseDetails.assignedTeams.length > 0 && (
+                      <div>
+                        <Text type="secondary">Teams</Text>
+                        {caseDetails.assignedTeams.map(team => (
+                          <Space key={team.id} style={{ display: 'block' }}>
+                            <Avatar size="small" icon={<TeamOutlined />} />
+                            {team.name}
+                          </Space>
+                        ))}
+                      </div>
+                    )}
+                    {!caseDetails.assignedUsers?.length && !caseDetails.assignedTeams?.length && caseDetails.assignedTo && (
+                      <Space>
+                        <Avatar size="small" icon={<UserOutlined />} />
+                        {caseDetails.assignedTo.name || caseDetails.assignedTo.fullName || caseDetails.assignedTo.username}
+                      </Space>
+                    )}
+                    {!caseDetails.assignedUsers?.length && !caseDetails.assignedTeams?.length && !caseDetails.assignedTo && (
+                      <span style={{ color: '#999' }}>Unassigned</span>
+                    )}
+                  </Space>
                 </Descriptions.Item>
                 <Descriptions.Item label="Created By">
                   <Space>
                     <Avatar size="small" icon={<UserOutlined />} />
-                    {caseDetails.createdBy?.fullName || 'Unknown'}
+                    {caseDetails.createdBy?.fullName || caseDetails.assignedBy?.name || 'Unknown'}
                   </Space>
                 </Descriptions.Item>
                 <Descriptions.Item label="Created">
@@ -710,12 +787,29 @@ export default function CaseDetailPage() {
                   size="small"
                 >
                   <Space direction="vertical" style={{ width: '100%' }} size={16}>
+                    <div>
+                      <Text strong>Quick Actions:</Text>
+                      <div style={{ marginTop: 8 }}>
+                        <QuickActions
+                          case={caseDetails}
+                          onSuccess={() => {
+                            queryClient.invalidateQueries({ queryKey: ['cases', caseId] });
+                            queryClient.invalidateQueries({ queryKey: ['cases'] });
+                          }}
+                          size="small"
+                          type="buttons"
+                          disabled={caseDetails.status === 'CLOSED' || caseDetails.status === 'CANCELLED'}
+                        />
+                      </div>
+                    </div>
+
                     {/* Current Assignment */}
                     <div>
                       <Text strong>Assigned To:</Text>
                       <br />
-                      {caseDetails.assignedUsers && caseDetails.assignedUsers.length > 0 ? (
+                      {caseDetails.assignedUsers && caseDetails.assignedUsers.length > 0 && (
                         <div style={{ marginTop: 8 }}>
+                          <Text type="secondary">Users</Text>
                           {caseDetails.assignedUsers.map((user, index) => (
                             <Space key={user.id} style={{ display: 'block', marginBottom: index < caseDetails.assignedUsers!.length - 1 ? 8 : 0 }}>
                               <Avatar size="small" icon={<UserOutlined />} />
@@ -728,7 +822,24 @@ export default function CaseDetailPage() {
                             </Space>
                           ))}
                         </div>
-                      ) : caseDetails.assignedTo ? (
+                      )}
+                      {caseDetails.assignedTeams && caseDetails.assignedTeams.length > 0 && (
+                        <div style={{ marginTop: 8 }}>
+                          <Text type="secondary">Teams</Text>
+                          {caseDetails.assignedTeams.map((team, index) => (
+                            <Space key={team.id} style={{ display: 'block', marginBottom: index < caseDetails.assignedTeams!.length - 1 ? 8 : 0 }}>
+                              <Avatar size="small" icon={<TeamOutlined />} />
+                              <div>
+                                <div>{team.name}</div>
+                                <Text type="secondary" style={{ fontSize: 12 }}>
+                                  {team.memberCount || 0} members
+                                </Text>
+                              </div>
+                            </Space>
+                          ))}
+                        </div>
+                      )}
+                      {!caseDetails.assignedUsers?.length && !caseDetails.assignedTeams?.length && caseDetails.assignedTo && (
                         <Space style={{ marginTop: 8 }}>
                           <Avatar size="small" icon={<UserOutlined />} />
                           <div>
@@ -738,7 +849,8 @@ export default function CaseDetailPage() {
                             </Text>
                           </div>
                         </Space>
-                      ) : (
+                      )}
+                      {!caseDetails.assignedUsers?.length && !caseDetails.assignedTeams?.length && !caseDetails.assignedTo && (
                         <Alert
                           message="Unassigned"
                           description="This case needs to be assigned to a team member"
@@ -786,17 +898,104 @@ export default function CaseDetailPage() {
                       <br />
                       <div style={{ marginTop: 8 }}>
                         <Progress
-                          percent={Math.min(100, (dayjs().diff(dayjs(caseDetails.createdAt), 'hours') / 24) * 100)}
-                          status={dayjs().diff(dayjs(caseDetails.createdAt), 'hours') > 24 ? 'exception' : 'active'}
-                          format={(percent) => `${Math.round((percent || 0) / 100 * 24)}h`}
+                          percent={slaPercent}
+                          status={isSlaBreached ? 'exception' : 'active'}
+                          format={() => `${Math.round(slaElapsedHours)}h`}
                         />
                         <Text type="secondary" style={{ fontSize: 12 }}>
-                          Target: 24 hours | Elapsed: {dayjs().diff(dayjs(caseDetails.createdAt), 'hours')} hours
+                          Target: {Math.round(slaTargetHours)} hours | Elapsed: {Math.round(slaElapsedHours)} hours
                         </Text>
                       </div>
                     </div>
                   </Space>
                 </Card>
+
+                {canViewPerformance && (
+                  <Card
+                    title={
+                      <Space>
+                        <BarChartOutlined />
+                        <span>Performance Snapshot</span>
+                      </Space>
+                    }
+                    size="small"
+                    style={{ marginTop: 16 }}
+                    extra={
+                      <Space>
+                        <Select
+                          size="small"
+                          value={performanceScope}
+                          onChange={setPerformanceScope}
+                          options={[
+                            { label: 'System', value: 'system' },
+                            { label: 'Team', value: 'team', disabled: !caseDetails.assignedTeams?.length },
+                          ]}
+                        />
+                        <Select
+                          size="small"
+                          value={performancePeriod}
+                          onChange={setPerformancePeriod}
+                          options={[
+                            { label: '7d', value: '7d' },
+                            { label: '30d', value: '30d' },
+                            { label: '90d', value: '90d' },
+                          ]}
+                        />
+                      </Space>
+                    }
+                  >
+                    {performanceScope === 'team' && (
+                      <div style={{ marginBottom: 12 }}>
+                        <Text type="secondary">Team</Text>
+                        <Select
+                          style={{ width: '100%', marginTop: 6 }}
+                          size="small"
+                          value={selectedTeamId}
+                          onChange={setSelectedTeamId}
+                          options={(caseDetails.assignedTeams || []).map(team => ({
+                            value: team.id,
+                            label: team.name,
+                          }))}
+                        />
+                      </div>
+                    )}
+                    <Row gutter={[12, 12]}>
+                      <Col span={12}>
+                        <Statistic
+                          title="Total Cases"
+                          value={performanceScope === 'team' ? (teamPerformance?.totalCases || 0) : (caseStats?.total || 0)}
+                        />
+                      </Col>
+                      <Col span={12}>
+                        <Statistic
+                          title="Open Cases"
+                          value={performanceScope === 'team' ? (teamPerformance?.openCases || 0) : (caseStats?.open || 0)}
+                        />
+                      </Col>
+                      <Col span={12}>
+                        <Statistic
+                          title="Resolved"
+                          value={performanceScope === 'team' ? (teamPerformance?.resolvedCases || 0) : (caseStats?.resolved || 0)}
+                        />
+                      </Col>
+                      <Col span={12}>
+                        <Statistic
+                          title="SLA Compliance"
+                          value={performanceScope === 'team' ? (teamPerformance?.slaCompliance || 0) : (caseStats?.slaCompliance || 0)}
+                          suffix="%"
+                        />
+                      </Col>
+                      <Col span={24}>
+                        <Statistic
+                          title="Avg Resolution (hrs)"
+                          value={performanceScope === 'team'
+                            ? toHours(teamPerformance?.averageResolutionTime)
+                            : toHours(caseStats?.averageResolutionTime)}
+                        />
+                      </Col>
+                    </Row>
+                  </Card>
+                )}
               </Col>
             </Row>
           )}
@@ -823,13 +1022,15 @@ export default function CaseDetailPage() {
                   >
                     <strong>Case Created</strong>
                     <br />
-                    <small>by {caseDetails.createdBy?.fullName}</small>
+                    <small>by {caseDetails.createdBy?.fullName || caseDetails.assignedBy?.name || 'System'}</small>
+                    <br />
+                    <small>{dayjs(caseDetails.createdAt).format('YYYY-MM-DD HH:mm')}</small>
                     <br />
                     <small>{dayjs(caseDetails.createdAt).fromNow()}</small>
                   </motion.div>
                 </Timeline.Item>
 
-                {activitiesData?.data?.map((activity: CaseActivity, index) => (
+                {activitiesData?.data?.map((activity: CaseActivity, index:any) => (
                   <Timeline.Item 
                     key={activity.id}
                     color={activity.activityType === 'COMMENT_ADDED' ? 'green' : 
@@ -855,6 +1056,8 @@ export default function CaseDetailPage() {
                       <br />
                       <small>by {activity.user?.name || activity.user?.fullName || activity.user?.username}</small>
                       <br />
+                      <small>{dayjs(activity.createdAt).format('YYYY-MM-DD HH:mm')}</small>
+                      <br />
                       <small>{dayjs(activity.createdAt).fromNow()}</small>
                     </motion.div>
                   </Timeline.Item>
@@ -870,6 +1073,8 @@ export default function CaseDetailPage() {
                       animate={{ opacity: 1, x: 0 }}
                     >
                       <strong>Case Closed</strong>
+                      <br />
+                      <small>{dayjs(caseDetails.closedAt).format('YYYY-MM-DD HH:mm')}</small>
                       <br />
                       <small>{dayjs(caseDetails.closedAt).fromNow()}</small>
                     </motion.div>
@@ -948,7 +1153,7 @@ export default function CaseDetailPage() {
 
               {/* Comments List */}
               <div>
-                {commentsData?.data?.map((comment: CaseComment, index) => (
+                {commentsData?.data?.map((comment: CaseComment, index:any) => (
                   <motion.div
                     key={comment.id}
                     initial={{ opacity: 0, y: 20 }}
@@ -971,7 +1176,7 @@ export default function CaseDetailPage() {
                                 {comment.user?.name || comment.user?.fullName || comment.user?.username || comment.author?.fullName}
                               </Text>
                               <Text type="secondary" style={{ fontSize: 12 }}>
-                                {dayjs(comment.createdAt).fromNow()}
+                                {dayjs(comment.createdAt).format('YYYY-MM-DD HH:mm')} ({dayjs(comment.createdAt).fromNow()})
                               </Text>
                               {comment.isInternal && (
                                 <Tag color="orange">
@@ -1014,9 +1219,11 @@ export default function CaseDetailPage() {
         onCancel={() => {
           setAssignModalVisible(false);
           setSelectedUserId(undefined);
+          setSelectedTeamId(undefined);
+          setAssignmentType('user');
         }}
         okButtonProps={{ 
-          disabled: !selectedUserId,
+          disabled: assignmentType === 'user' ? !selectedUserId : !selectedTeamId,
           loading: assignCaseMutation.isPending,
         }}
       >
@@ -1028,25 +1235,60 @@ export default function CaseDetailPage() {
             <strong>Current Assignee:</strong> {
               caseDetails.assignedUsers && caseDetails.assignedUsers.length > 0 
                 ? caseDetails.assignedUsers.map(u => u.name || u.fullName || u.username).join(', ')
+                : caseDetails.assignedTeams && caseDetails.assignedTeams.length > 0
+                ? caseDetails.assignedTeams.map(t => t.name).join(', ')
                 : caseDetails.assignedTo?.name || caseDetails.assignedTo?.fullName || caseDetails.assignedTo?.username || 'Unassigned'
             }
           </div>
           <div>
-            <strong>Assign to:</strong>
+            <strong>Assignment Type:</strong>
             <Select
               style={{ width: '100%', marginTop: 8 }}
-              placeholder="Select a user"
-              value={selectedUserId}
-              onChange={setSelectedUserId}
-              showSearch
-              filterOption={(input, option) =>
-                String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-              }
-              options={users?.data?.filter((user: User) => user && user.id != null).map((user: User) => ({
-                value: user.id,
-                label: `${user.fullName} (${user.email})`,
-              })) || []}
+              value={assignmentType}
+              onChange={(value) => {
+                setAssignmentType(value);
+                setSelectedUserId(undefined);
+                setSelectedTeamId(undefined);
+              }}
+              options={[
+                { label: 'Assign to User', value: 'user' },
+                { label: 'Assign to Team', value: 'team' },
+              ]}
             />
+          </div>
+          <div>
+            <strong>{assignmentType === 'user' ? 'Assign to User:' : 'Assign to Team:'}</strong>
+            {assignmentType === 'user' ? (
+              <Select
+                style={{ width: '100%', marginTop: 8 }}
+                placeholder="Select a user"
+                value={selectedUserId}
+                onChange={setSelectedUserId}
+                showSearch
+                filterOption={(input, option) =>
+                  String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                }
+                options={users?.data?.filter((user: User) => user && user.id != null).map((user: User) => ({
+                  value: user.id,
+                  label: `${user.fullName || user.username} (${user.email})`,
+                })) || []}
+              />
+            ) : (
+              <Select
+                style={{ width: '100%', marginTop: 8 }}
+                placeholder="Select a team"
+                value={selectedTeamId}
+                onChange={setSelectedTeamId}
+                showSearch
+                filterOption={(input, option) =>
+                  String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                }
+                options={teams?.data?.map((team: any) => ({
+                  value: team.id,
+                  label: `${team.name} (${team.memberCount || 0} members)`,
+                })) || []}
+              />
+            )}
           </div>
         </Space>
       </Modal>

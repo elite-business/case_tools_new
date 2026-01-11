@@ -50,8 +50,13 @@ public class CaseController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String severity,
             @RequestParam(required = false) String category,
+            @RequestParam(required = false) String priority,
             @RequestParam(required = false) Long assignedToId,
-            @RequestParam(required = false) String search) {
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo,
+            @RequestParam(required = false, defaultValue = "false") boolean includeTeamCases,
+            Authentication authentication) {
         
         CaseFilterRequest filter = CaseFilterRequest.builder()
                 .status(status)
@@ -59,9 +64,21 @@ public class CaseController {
                 .category(category)
                 .assignedToId(assignedToId)
                 .search(search)
+                .statuses(parseStatuses(status))
+                .severities(parseSeverities(severity))
+                .priorities(parsePriorities(priority))
+                .createdAfter(parseDate(dateFrom))
+                .createdBefore(parseDate(dateTo))
                 .build();
-        
-        Page<Case> cases = caseService.getCases(filter, pageable);
+
+        Page<Case> cases;
+        if (isAdminOrManager(authentication) && !includeTeamCases) {
+            cases = caseService.getCases(filter, pageable);
+        } else {
+            User currentUser = resolveCurrentUser(authentication);
+            cases = caseService.getUserCasesFiltered(currentUser.getId(), true, filter, pageable);
+        }
+
         Page<CaseResponse> caseResponses = cases.map(this::convertToResponse);
         return ResponseEntity.ok(caseResponses);
     }
@@ -243,9 +260,11 @@ public class CaseController {
         Long resolvedCases = statsMap.get("resolvedCases") != null ? ((Number) statsMap.get("resolvedCases")).longValue() : 0L;
         Long closedCases = statsMap.get("closedCases") != null ? ((Number) statsMap.get("closedCases")).longValue() : 0L;
         Long breachedCases = statsMap.get("breachedCases") != null ? ((Number) statsMap.get("breachedCases")).longValue() : 0L;
+        Double avgResolutionTime = statsMap.get("avgResolutionTime") != null ? ((Number) statsMap.get("avgResolutionTime")).doubleValue() : 0.0;
         
         // Calculate total and overdue (overdue is same as breached in this context)
         Long total = openCases + inProgressCases + resolvedCases + closedCases;
+        Double slaCompliance = total > 0 ? ((double) (total - breachedCases) / total) * 100.0 : 0.0;
         
         // Build response from actual data
         CaseStatsResponse response = CaseStatsResponse.builder()
@@ -256,6 +275,8 @@ public class CaseController {
                 .closed(closedCases)
                 .overdue(breachedCases)  // Using breached as overdue
                 .breachedSla(breachedCases)
+                .averageResolutionTime(avgResolutionTime)
+                .slaCompliance(slaCompliance)
                 .build();
                 
         return ResponseEntity.ok(response);
@@ -507,6 +528,81 @@ public class CaseController {
             }
         }
         return assignedTeams;
+    }
+
+    private boolean isAdminOrManager(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return false;
+        }
+        return authentication.getAuthorities().stream()
+                .map(auth -> auth.getAuthority().toUpperCase())
+                .anyMatch(auth -> auth.equals("ROLE_ADMIN") || auth.equals("ROLE_MANAGER") || auth.equals("ADMIN") || auth.equals("MANAGER"));
+    }
+
+    private List<Case.CaseStatus> parseStatuses(String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+        List<Case.CaseStatus> statuses = new ArrayList<>();
+        for (String value : status.split(",")) {
+            try {
+                statuses.add(Case.CaseStatus.valueOf(value.trim().toUpperCase()));
+            } catch (IllegalArgumentException e) {
+                log.warn("Ignoring invalid status filter: {}", value);
+            }
+        }
+        return statuses.isEmpty() ? null : statuses;
+    }
+
+    private List<Case.Severity> parseSeverities(String severity) {
+        if (severity == null || severity.isBlank()) {
+            return null;
+        }
+        List<Case.Severity> severities = new ArrayList<>();
+        for (String value : severity.split(",")) {
+            try {
+                severities.add(Case.Severity.valueOf(value.trim().toUpperCase()));
+            } catch (IllegalArgumentException e) {
+                log.warn("Ignoring invalid severity filter: {}", value);
+            }
+        }
+        return severities.isEmpty() ? null : severities;
+    }
+
+    private List<Integer> parsePriorities(String priority) {
+        if (priority == null || priority.isBlank()) {
+            return null;
+        }
+        List<Integer> priorities = new ArrayList<>();
+        for (String value : priority.split(",")) {
+            try {
+                priorities.add(Integer.parseInt(value.trim()));
+            } catch (NumberFormatException e) {
+                log.warn("Ignoring invalid priority filter: {}", value);
+            }
+        }
+        return priorities.isEmpty() ? null : priorities;
+    }
+
+    private LocalDateTime parseDate(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return java.time.OffsetDateTime.parse(value).toLocalDateTime();
+        } catch (Exception e) {
+            log.warn("Ignoring invalid date filter: {}", value);
+            return null;
+        }
+    }
+
+    private User resolveCurrentUser(Authentication authentication) {
+        Object principal = authentication.getPrincipal();
+        if (principal instanceof User user) {
+            return user;
+        }
+        return userRepository.findByLogin(authentication.getName())
+                .orElseThrow(() -> new IllegalStateException("Authenticated user not found"));
     }
 
     /**

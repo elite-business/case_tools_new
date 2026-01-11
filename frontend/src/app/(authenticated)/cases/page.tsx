@@ -33,7 +33,7 @@ import {
   ExclamationCircleOutlined,
   SyncOutlined
 } from '@ant-design/icons';
-import { casesApi, handleApiError } from '@/lib/api-client';
+import { casesApi } from '@/lib/api-client';
 import { Case, CaseFilters, CaseStatus, CaseSeverity } from '@/lib/types';
 import CaseGroupingControls, { GroupByOption, ViewMode } from '@/components/cases/CaseGroupingControls';
 import GroupedCaseView from '@/components/cases/GroupedCaseView';
@@ -69,11 +69,28 @@ export default function CasesPage() {
   // Fetch cases with filters
   const { data: casesData, isLoading, refetch } = useQuery({
     queryKey: ['cases', 'enhanced', filters],
-    queryFn: () => casesApi.getAll({
-      ...filters,
-      status: selectedStatuses.length > 0 ? selectedStatuses : undefined,
-      severity: selectedSeverities.length > 0 ? selectedSeverities : undefined,
-    }),
+    queryFn: () => {
+      const queryParams: any = {
+        ...filters,
+        status: selectedStatuses.length > 0 ? selectedStatuses.join(',') : undefined,
+        severity: selectedSeverities.length > 0 ? selectedSeverities.join(',') : undefined,
+      };
+
+      if (filters.assignedTo && filters.assignedTo.length > 0) {
+        queryParams.assignedToId = filters.assignedTo[0];
+        delete queryParams.assignedTo;
+      }
+
+      if (!isManagerOrAdmin && user?.id) {
+        queryParams.assignedToId = user.id;
+        queryParams.includeTeamCases = true;
+      } else if (showMyTeamOnly && user?.id) {
+        queryParams.assignedToId = user.id;
+        queryParams.includeTeamCases = true;
+      }
+
+      return casesApi.getAll(queryParams);
+    },
   });
 
   // Fetch case statistics
@@ -103,8 +120,8 @@ export default function CasesPage() {
     if (dates) {
       setFilters(prev => ({
         ...prev,
-        dateFrom: dates[0]?.format('YYYY-MM-DD'),
-        dateTo: dates[1]?.format('YYYY-MM-DD'),
+        dateFrom: dates[0]?.startOf('day').toISOString(),
+        dateTo: dates[1]?.endOf('day').toISOString(),
       }));
     } else {
       setFilters(prev => {

@@ -20,4 +20,6 @@ public class CaseStatsResponse {
     private Long closed;
     private Long overdue;
     private Long breachedSla;
+    private Double averageResolutionTime;
+    private Double slaCompliance;
 }

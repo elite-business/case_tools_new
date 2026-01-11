@@ -245,7 +245,7 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
     },
     onError: (error) => {
       console.error('Quick action error:', error);
-      message.error('Failed to perform quick action');
+      message.error(handleApiError(error));
     }
   });
 

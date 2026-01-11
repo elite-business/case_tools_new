@@ -190,7 +190,7 @@ public interface CaseRepository extends JpaRepository<Case, Long>, JpaSpecificat
     @Query(value = """
             SELECT c.* FROM casemanagement.case c
             INNER JOIN casemanagement.userlogin u ON c.assigned_to = u.id
-            INNER JOIN casemanagement.team_members tm ON tm.user_id = u.id
+            INNER JOIN casemanagement.team_member tm ON tm.user_id = u.id
             WHERE tm.team_id = :teamId 
             AND c.created_at BETWEEN :startDate AND :endDate
             """, nativeQuery = true)
@@ -215,19 +215,19 @@ public interface CaseRepository extends JpaRepository<Case, Long>, JpaSpecificat
 
     /**
      * Find cases assigned to user (including team assignments)
-     * Uses JSONB assignment_info to find both direct user assignments and team assignments
+     * Uses JSONB assigned_to to find both direct user assignments and team assignments
      */
     @Query(value = """
-            SELECT DISTINCT c.* FROM casemanagement.case c
+            SELECT c.* FROM casemanagement.case c
             WHERE (
                 -- Direct user assignment
-                c.assignment_info @> jsonb_build_object('userIds', jsonb_build_array(:userId))
+                c.assigned_to @> jsonb_build_object('userIds', jsonb_build_array(:userId))
                 OR 
                 -- Team assignment (user is member of assigned team)
                 EXISTS (
-                    SELECT 1 FROM casemanagement.team_members tm
+                    SELECT 1 FROM casemanagement.team_member tm
                     WHERE tm.user_id = :userId
-                    AND c.assignment_info -> 'teamIds' @> to_jsonb(tm.team_id)
+                    AND c.assigned_to -> 'teamIds' @> to_jsonb(tm.team_id)
                 )
             )
             AND (:includeClosedCases = true OR c.status NOT IN ('CLOSED', 'CANCELLED', 'RESOLVED'))
@@ -242,6 +242,72 @@ public interface CaseRepository extends JpaRepository<Case, Long>, JpaSpecificat
             Pageable pageable);
 
     /**
+     * Find cases assigned to user or their teams with filtering.
+     */
+    @Query(value = """
+            SELECT c.* FROM casemanagement.case c
+            WHERE (
+                c.assigned_to @> jsonb_build_object('userIds', jsonb_build_array(?1))
+                OR EXISTS (
+                    SELECT 1 FROM casemanagement.team_member tm
+                    WHERE tm.user_id = ?1
+                    AND c.assigned_to -> 'teamIds' @> to_jsonb(tm.team_id)
+                )
+            )
+            AND (?2 = true OR c.status NOT IN ('CLOSED', 'CANCELLED', 'RESOLVED'))
+            AND (?3 IS NULL OR c.status = ANY(string_to_array(?3, ',')))
+            AND (?4 IS NULL OR c.severity = ANY(string_to_array(?4, ',')))
+            AND (?5 IS NULL OR c.priority = ANY(CAST(string_to_array(?5, ',') AS int[])))
+            AND (?6 IS NULL OR c.category = ?6)
+            AND (?7 IS NULL OR (
+                lower(c.title) LIKE lower(concat('%', ?7, '%'))
+                OR lower(c.case_number) LIKE lower(concat('%', ?7, '%'))
+                OR lower(coalesce(c.description, '')) LIKE lower(concat('%', ?7, '%'))
+            ))
+            AND (CAST(?8 AS timestamp) IS NULL OR c.created_at >= CAST(?8 AS timestamp))
+            AND (CAST(?9 AS timestamp) IS NULL OR c.created_at <= CAST(?9 AS timestamp))
+            ORDER BY 
+                CASE WHEN c.sla_breached = true THEN 0 ELSE 1 END,
+                c.priority ASC,
+                c.created_at DESC
+            """,
+            countQuery = """
+            SELECT COUNT(DISTINCT c.id) FROM casemanagement.case c
+            WHERE (
+                c.assigned_to @> jsonb_build_object('userIds', jsonb_build_array(?1))
+                OR EXISTS (
+                    SELECT 1 FROM casemanagement.team_member tm
+                    WHERE tm.user_id = ?1
+                    AND c.assigned_to -> 'teamIds' @> to_jsonb(tm.team_id)
+                )
+            )
+            AND (?2 = true OR c.status NOT IN ('CLOSED', 'CANCELLED', 'RESOLVED'))
+            AND (?3 IS NULL OR c.status = ANY(string_to_array(?3, ',')))
+            AND (?4 IS NULL OR c.severity = ANY(string_to_array(?4, ',')))
+            AND (?5 IS NULL OR c.priority = ANY(CAST(string_to_array(?5, ',') AS int[])))
+            AND (?6 IS NULL OR c.category = ?6)
+            AND (?7 IS NULL OR (
+                lower(c.title) LIKE lower(concat('%', ?7, '%'))
+                OR lower(c.case_number) LIKE lower(concat('%', ?7, '%'))
+                OR lower(coalesce(c.description, '')) LIKE lower(concat('%', ?7, '%'))
+            ))
+            AND (CAST(?8 AS timestamp) IS NULL OR c.created_at >= CAST(?8 AS timestamp))
+            AND (CAST(?9 AS timestamp) IS NULL OR c.created_at <= CAST(?9 AS timestamp))
+            """,
+            nativeQuery = true)
+    Page<Case> findCasesByUserOrTeamAssignmentFiltered(
+            @Param("userId") Long userId,
+            @Param("includeClosedCases") boolean includeClosedCases,
+            @Param("status") String status,
+            @Param("severity") String severity,
+            @Param("priority") String priority,
+            @Param("category") String category,
+            @Param("search") String search,
+            @Param("dateFrom") LocalDateTime dateFrom,
+            @Param("dateTo") LocalDateTime dateTo,
+            Pageable pageable);
+
+    /**
      * Team performance related queries
      */
     
@@ -251,11 +317,11 @@ public interface CaseRepository extends JpaRepository<Case, Long>, JpaSpecificat
     @Query(value = """
             SELECT COUNT(c.*) FROM casemanagement.case c
             WHERE (
-                jsonb_exists_any(c.assignment_info -> 'userIds', array[:userIds]::text[])
+                jsonb_exists_any(c.assigned_to -> 'userIds', ARRAY(SELECT unnest(:userIds)::text))
                 OR EXISTS (
-                    SELECT 1 FROM casemanagement.team_members tm
-                    WHERE tm.user_id = ANY(array[:userIds])
-                    AND c.assignment_info -> 'teamIds' @> to_jsonb(tm.team_id)
+                    SELECT 1 FROM casemanagement.team_member tm
+                    WHERE tm.user_id = ANY(:userIds)
+                    AND c.assigned_to -> 'teamIds' @> to_jsonb(tm.team_id)
                 )
             )
             AND c.created_at BETWEEN :startDate AND :endDate
@@ -271,11 +337,11 @@ public interface CaseRepository extends JpaRepository<Case, Long>, JpaSpecificat
     @Query(value = """
             SELECT COUNT(c.*) FROM casemanagement.case c
             WHERE (
-                jsonb_exists_any(c.assignment_info -> 'userIds', array[:userIds]::text[])
+                jsonb_exists_any(c.assigned_to -> 'userIds', ARRAY(SELECT unnest(:userIds)::text))
                 OR EXISTS (
-                    SELECT 1 FROM casemanagement.team_members tm
-                    WHERE tm.user_id = ANY(array[:userIds])
-                    AND c.assignment_info -> 'teamIds' @> to_jsonb(tm.team_id)
+                    SELECT 1 FROM casemanagement.team_member tm
+                    WHERE tm.user_id = ANY(:userIds)
+                    AND c.assigned_to -> 'teamIds' @> to_jsonb(tm.team_id)
                 )
             )
             AND c.status = :status
@@ -293,11 +359,11 @@ public interface CaseRepository extends JpaRepository<Case, Long>, JpaSpecificat
     @Query(value = """
             SELECT COUNT(c.*) FROM casemanagement.case c
             WHERE (
-                jsonb_exists_any(c.assignment_info -> 'userIds', array[:userIds]::text[])
+                jsonb_exists_any(c.assigned_to -> 'userIds', ARRAY(SELECT unnest(:userIds)::text))
                 OR EXISTS (
-                    SELECT 1 FROM casemanagement.team_members tm
-                    WHERE tm.user_id = ANY(array[:userIds])
-                    AND c.assignment_info -> 'teamIds' @> to_jsonb(tm.team_id)
+                    SELECT 1 FROM casemanagement.team_member tm
+                    WHERE tm.user_id = ANY(:userIds)
+                    AND c.assigned_to -> 'teamIds' @> to_jsonb(tm.team_id)
                 )
             )
             AND c.status = :status
@@ -312,11 +378,11 @@ public interface CaseRepository extends JpaRepository<Case, Long>, JpaSpecificat
     @Query(value = """
             SELECT c.* FROM casemanagement.case c
             WHERE (
-                jsonb_exists_any(c.assignment_info -> 'userIds', array[:userIds]::text[])
+                jsonb_exists_any(c.assigned_to -> 'userIds', ARRAY(SELECT unnest(:userIds)::text))
                 OR EXISTS (
-                    SELECT 1 FROM casemanagement.team_members tm
-                    WHERE tm.user_id = ANY(array[:userIds])
-                    AND c.assignment_info -> 'teamIds' @> to_jsonb(tm.team_id)
+                    SELECT 1 FROM casemanagement.team_member tm
+                    WHERE tm.user_id = ANY(:userIds)
+                    AND c.assigned_to -> 'teamIds' @> to_jsonb(tm.team_id)
                 )
             )
             AND c.status = :status
@@ -334,11 +400,11 @@ public interface CaseRepository extends JpaRepository<Case, Long>, JpaSpecificat
     @Query(value = """
             SELECT c.* FROM casemanagement.case c
             WHERE (
-                jsonb_exists_any(c.assignment_info -> 'userIds', array[:userIds]::text[])
+                jsonb_exists_any(c.assigned_to -> 'userIds', ARRAY(SELECT unnest(:userIds)::text))
                 OR EXISTS (
-                    SELECT 1 FROM casemanagement.team_members tm
-                    WHERE tm.user_id = ANY(array[:userIds])
-                    AND c.assignment_info -> 'teamIds' @> to_jsonb(tm.team_id)
+                    SELECT 1 FROM casemanagement.team_member tm
+                    WHERE tm.user_id = ANY(:userIds)
+                    AND c.assigned_to -> 'teamIds' @> to_jsonb(tm.team_id)
                 )
             )
             AND c.resolved_at BETWEEN :startDate AND :endDate
@@ -354,11 +420,11 @@ public interface CaseRepository extends JpaRepository<Case, Long>, JpaSpecificat
     @Query(value = """
             SELECT COUNT(c.*) FROM casemanagement.case c
             WHERE (
-                jsonb_exists_any(c.assignment_info -> 'userIds', array[:userIds]::text[])
+                jsonb_exists_any(c.assigned_to -> 'userIds', ARRAY(SELECT unnest(:userIds)::text))
                 OR EXISTS (
-                    SELECT 1 FROM casemanagement.team_members tm
-                    WHERE tm.user_id = ANY(array[:userIds])
-                    AND c.assignment_info -> 'teamIds' @> to_jsonb(tm.team_id)
+                    SELECT 1 FROM casemanagement.team_member tm
+                    WHERE tm.user_id = ANY(:userIds)
+                    AND c.assigned_to -> 'teamIds' @> to_jsonb(tm.team_id)
                 )
             )
             AND c.closure_reason ILIKE %:reason%
@@ -376,30 +442,30 @@ public interface CaseRepository extends JpaRepository<Case, Long>, JpaSpecificat
     @Query(value = """
             SELECT COUNT(c.*) FROM casemanagement.case c
             WHERE (
-                c.assignment_info -> 'userIds' @> to_jsonb(:userId)
+                c.assigned_to -> 'userIds' @> to_jsonb(:userId)
                 OR EXISTS (
-                    SELECT 1 FROM casemanagement.team_members tm
+                    SELECT 1 FROM casemanagement.team_member tm
                     WHERE tm.user_id = :userId
-                    AND c.assignment_info -> 'teamIds' @> to_jsonb(tm.team_id)
+                    AND c.assigned_to -> 'teamIds' @> to_jsonb(tm.team_id)
                 )
             )
-            AND c.status = ANY(array[:statuses])
+            AND c.status = ANY(:statuses)
             """, nativeQuery = true)
     Long countByAssignedUserIdAndStatusIn(
             @Param("userId") Long userId,
             @Param("statuses") String[] statuses);
 
     /**
-     * Find unassigned cases (no assignment_info or empty assignment_info)
+     * Find unassigned cases (no assigned_to or empty assigned_to)
      */
     @Query(value = """
             SELECT c.* FROM casemanagement.case c
             WHERE (
-                c.assignment_info IS NULL 
-                OR c.assignment_info = '{}'::jsonb
+                c.assigned_to IS NULL 
+                OR c.assigned_to = '{}'::jsonb
                 OR (
-                    (c.assignment_info -> 'userIds' IS NULL OR jsonb_array_length(c.assignment_info -> 'userIds') = 0)
-                    AND (c.assignment_info -> 'teamIds' IS NULL OR jsonb_array_length(c.assignment_info -> 'teamIds') = 0)
+                    (c.assigned_to -> 'userIds' IS NULL OR jsonb_array_length(c.assigned_to -> 'userIds') = 0)
+                    AND (c.assigned_to -> 'teamIds' IS NULL OR jsonb_array_length(c.assigned_to -> 'teamIds') = 0)
                 )
             )
             AND c.status NOT IN ('CLOSED', 'CANCELLED', 'RESOLVED')
@@ -413,11 +479,11 @@ public interface CaseRepository extends JpaRepository<Case, Long>, JpaSpecificat
     @Query(value = """
             SELECT COUNT(c.*) FROM casemanagement.case c
             WHERE (
-                c.assignment_info IS NULL 
-                OR c.assignment_info = '{}'::jsonb
+                c.assigned_to IS NULL 
+                OR c.assigned_to = '{}'::jsonb
                 OR (
-                    (c.assignment_info -> 'userIds' IS NULL OR jsonb_array_length(c.assignment_info -> 'userIds') = 0)
-                    AND (c.assignment_info -> 'teamIds' IS NULL OR jsonb_array_length(c.assignment_info -> 'teamIds') = 0)
+                    (c.assigned_to -> 'userIds' IS NULL OR jsonb_array_length(c.assigned_to -> 'userIds') = 0)
+                    AND (c.assigned_to -> 'teamIds' IS NULL OR jsonb_array_length(c.assigned_to -> 'teamIds') = 0)
                 )
             )
             AND c.status NOT IN ('CLOSED', 'CANCELLED', 'RESOLVED')
