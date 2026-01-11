@@ -450,7 +450,7 @@ export default function AlertRuleBuilder() {
                   label="Category"
                   rules={[{ required: true }]}
                   options={[
-                    { label: '💰 Revenue Assurance', value: 'revenue' },
+                    { label: '📊 Operations Assurance', value: 'revenue' },
                     { label: '📡 Network Performance', value: 'network' },
                     { label: '🛡️ Fraud Detection', value: 'fraud' },
                     { label: '⚡ Quality of Service', value: 'qos' },

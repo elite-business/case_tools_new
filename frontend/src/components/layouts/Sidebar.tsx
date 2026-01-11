@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Layout,
   Menu,
@@ -32,10 +32,11 @@ import {
   TrophyOutlined,
 } from '@ant-design/icons';
 import { useRouter, usePathname } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth-store';
 import { useThemeStore } from '@/store/theme-store';
 import { useRoleAccess } from '@/hooks/useRoleAccess';
-import Link from 'next/link';
+import { grafanaApi } from '@/lib/api-client';
 
 const { Sider } = Layout;
 const { Text } = Typography;
@@ -49,6 +50,7 @@ interface MenuItem {
   children?: MenuItem[];
   access?: string[];
   disabled?: boolean;
+  onClick?: () => void;
 }
 
 interface SidebarProps {
@@ -208,9 +210,60 @@ const Sidebar: React.FC<SidebarProps> = ({
     setSidebarCollapsedMobile,
   } = useThemeStore();
   const { token } = theme.useToken();
+
+  const canViewGrafanaDashboards = permissions.canViewGrafanaIntegration;
+  const { data: grafanaDashboards } = useQuery({
+    queryKey: ['grafana', 'dashboards'],
+    queryFn: () => grafanaApi.getDashboards(),
+    enabled: canViewGrafanaDashboards,
+    staleTime: 5 * 60 * 1000,
+  });
   
   const [openKeys, setOpenKeys] = useState<string[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
+
+  const grafanaBaseUrl = process.env.NEXT_PUBLIC_GRAFANA_URL || '';
+  const dashboardChildren = useMemo(() => {
+    if (!canViewGrafanaDashboards) {
+      return undefined;
+    }
+    const dashboards = grafanaDashboards?.data || [];
+    const grafanaItems = dashboards.map((dashboard: any) => ({
+      key: `grafana-${dashboard.uid || dashboard.id}`,
+      label: dashboard.title,
+      icon: <BarChartOutlined />,
+      path: dashboard.url || '',
+      onClick: () => {
+        const url = dashboard.url
+          ? dashboard.url.startsWith('http')
+            ? dashboard.url
+            : `${grafanaBaseUrl}${dashboard.url}`
+          : '';
+        if (url) {
+          window.open(url, '_blank');
+        }
+      },
+    }));
+
+    return [
+      {
+        key: 'dashboard-main',
+        label: 'Main Dashboard',
+        icon: <DashboardOutlined />,
+        path: '/dashboard',
+      },
+      ...grafanaItems,
+    ];
+  }, [canViewGrafanaDashboards, grafanaDashboards, grafanaBaseUrl]);
+
+  const resolvedMenuItems = useMemo(() => {
+    return menuItems.map((item) => {
+      if (item.key === 'dashboard' && dashboardChildren) {
+        return { ...item, children: dashboardChildren };
+      }
+      return item;
+    });
+  }, [menuItems, dashboardChildren]);
 
   // Update selected keys based on current path
   useEffect(() => {
@@ -229,7 +282,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       return null;
     };
 
-    const selectedKey = findSelectedKey(menuItems, pathname);
+    const selectedKey = findSelectedKey(resolvedMenuItems, pathname);
     if (selectedKey) {
       setSelectedKeys([selectedKey]);
       
@@ -243,12 +296,12 @@ const Sidebar: React.FC<SidebarProps> = ({
         return null;
       };
       
-      const parentKey = findParentKey(menuItems, selectedKey);
+      const parentKey = findParentKey(resolvedMenuItems, selectedKey);
       if (parentKey && !collapsed) {
         setOpenKeys(prev => [...new Set([...prev, parentKey])]);
       }
     }
-  }, [pathname, menuItems, collapsed]);
+  }, [pathname, resolvedMenuItems, collapsed]);
 
   // Filter menu items based on user access and permissions
   const filterMenuItems = (items: MenuItem[]): MenuItem[] => {
@@ -320,7 +373,11 @@ const Sidebar: React.FC<SidebarProps> = ({
       children: item.children ? convertToAntMenuItems(item.children) : undefined,
       disabled: item.disabled,
       onClick: item.children ? undefined : () => {
-        router.push(item.path);
+        if (item.onClick) {
+          item.onClick();
+        } else if (item.path) {
+          router.push(item.path);
+        }
         if (mobile && onMobileDrawerClose) {
           onMobileDrawerClose();
         }
@@ -342,9 +399,13 @@ const Sidebar: React.FC<SidebarProps> = ({
       return null;
     };
 
-    const menuItem = findMenuItem(menuItems, key);
+  const menuItem = findMenuItem(resolvedMenuItems, key);
     if (menuItem && !menuItem.children) {
-      router.push(menuItem.path);
+      if (menuItem.onClick) {
+        menuItem.onClick();
+      } else if (menuItem.path) {
+        router.push(menuItem.path);
+      }
       if (mobile && onMobileDrawerClose) {
         onMobileDrawerClose();
       }
@@ -527,7 +588,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           openKeys={collapsed ? [] : openKeys}
           onOpenChange={handleOpenChange}
           onClick={handleMenuClick}
-          items={convertToAntMenuItems(filterMenuItems(menuItems))}
+          items={convertToAntMenuItems(filterMenuItems(resolvedMenuItems))}
           inlineCollapsed={collapsed}
           style={{
             borderRight: 'none',

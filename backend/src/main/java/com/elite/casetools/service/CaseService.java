@@ -88,6 +88,7 @@ public class CaseService {
         addActivity(savedCase, CaseActivity.ActivityType.CREATED, null, null, null, "Case created");
 
         // Send notifications
+        notificationService.sendCaseCreatedNotifications(savedCase);
         if (savedCase.getAssignedTo() != null) {
             notificationService.notifyCaseAssigned(savedCase);
         }

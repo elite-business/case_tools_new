@@ -10,7 +10,7 @@ const resources = {
         alerts: 'Alerts',
         rules: 'RA Rules',
         domains: 'Domain Control',
-        revenue: 'Revenue Streams',
+        revenue: 'Business Streams',
         users: 'User Management',
         reports: 'Reports',
         settings: 'Settings'
@@ -28,7 +28,7 @@ const resources = {
         title: 'Dashboard',
         totalAlerts: 'Total Alerts',
         activeRules: 'Active Rules',
-        revenue: 'Revenue',
+        revenue: 'Business',
         users: 'Total Users',
         recentAlerts: 'Recent Alerts',
         performance: 'System Performance'
@@ -69,7 +69,7 @@ const resources = {
         alerts: 'Alertes',
         rules: 'Règles RA',
         domains: 'Contrôle de domaine',
-        revenue: 'Flux de revenus',
+        revenue: "Flux d'activite",
         users: 'Gestion des utilisateurs',
         reports: 'Rapports',
         settings: 'Paramètres'
@@ -87,7 +87,7 @@ const resources = {
         title: 'Tableau de bord',
         totalAlerts: 'Total des alertes',
         activeRules: 'Règles actives',
-        revenue: 'Revenus',
+        revenue: 'Activite',
         users: 'Total des utilisateurs',
         recentAlerts: 'Alertes récentes',
         performance: 'Performance du système'
@@ -128,7 +128,7 @@ const resources = {
         alerts: 'التنبيهات',
         rules: 'قواعد RA',
         domains: 'التحكم في المجال',
-        revenue: 'تدفقات الإيرادات',
+        revenue: 'تدفقات الأعمال',
         users: 'إدارة المستخدمين',
         reports: 'التقارير',
         settings: 'الإعدادات'
@@ -146,7 +146,7 @@ const resources = {
         title: 'لوحة القيادة',
         totalAlerts: 'إجمالي التنبيهات',
         activeRules: 'القواعد النشطة',
-        revenue: 'الإيرادات',
+        revenue: 'الأعمال',
         users: 'إجمالي المستخدمين',
         recentAlerts: 'التنبيهات الأخيرة',
         performance: 'أداء النظام'

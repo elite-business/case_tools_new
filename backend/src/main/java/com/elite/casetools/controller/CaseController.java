@@ -181,7 +181,7 @@ public class CaseController {
      * Add comment to case
      */
     @PostMapping("/{id}/comments")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST', 'VIEWER')")
     @Operation(summary = "Add comment to case")
     public ResponseEntity<CaseCommentResponse> addComment(
             @PathVariable Long id,
@@ -286,7 +286,7 @@ public class CaseController {
      * Get my assigned cases
      */
     @GetMapping("/my-cases")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST','VIEWER')")
     @Operation(summary = "Get current user's assigned cases")
     public ResponseEntity<List<CaseResponse>> getMyCases(
             @RequestParam(defaultValue = "false") boolean includeClosedCases,
@@ -423,6 +423,7 @@ public class CaseController {
                 .alertId(caseEntity.getAlertId())
                 .grafanaAlertId(caseEntity.getGrafanaAlertId())
                 .grafanaAlertUid(caseEntity.getGrafanaAlertUid())
+                .alertData(caseEntity.getAlertData())
                 .resolutionTimeMinutes(caseEntity.getResolutionTimeMinutes())
                 .build();
     }

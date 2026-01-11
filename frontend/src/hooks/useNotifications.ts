@@ -1,17 +1,21 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import { message, notification } from 'antd';
 import { wsService, WebSocketNotification } from '@/lib/websocket-stomp';
+import { notificationsApi } from '@/lib/api-client';
 import { useAuthStore } from '@/store/auth-store';
+import type { NotificationSeverity, NotificationType } from '@/lib/types';
 
 export interface NotificationFilters {
   status?: 'PENDING' | 'SENT' | 'READ' | 'FAILED';
-  type?: string;
-  severity?: string;
+  type?: string | string[];
+  severity?: string | string[];
   limit?: number;
   offset?: number;
+  page?: number;
+  size?: number;
   search?: string;
   startDate?: string;
   endDate?: string;
@@ -82,106 +86,26 @@ class DesktopNotificationManager {
 // Singleton instance
 const desktopNotificationManager = new DesktopNotificationManager();
 
-// Notification store for state management
-interface NotificationStore {
-  notifications: WebSocketNotification[];
-  unreadCount: number;
-  isConnected: boolean;
-  lastUpdate: Date | null;
-}
+const buildNotificationParams = (filters: NotificationFilters = {}) => {
+  const size = filters.size ?? filters.limit ?? 20;
+  const page = filters.page ?? (filters.offset != null ? Math.floor(filters.offset / size) : 0);
+  const typeParam = Array.isArray(filters.type) ? filters.type[0] : filters.type;
 
-const notificationStore: NotificationStore = {
-  notifications: [],
-  unreadCount: 0,
-  isConnected: false,
-  lastUpdate: null,
-};
-
-// Mock API functions (replace with actual API calls)
-const notificationsApi = {
-  getNotifications: async (filters: NotificationFilters = {}) => {
-    // Mock implementation - replace with actual API call
-    const { limit = 50, offset = 0 } = filters;
-    return {
-      data: {
-        content: notificationStore.notifications.slice(offset, offset + limit),
-        totalElements: notificationStore.notifications.length,
-        totalPages: Math.ceil(notificationStore.notifications.length / limit),
-        number: Math.floor(offset / limit),
-        size: limit,
-        first: offset === 0,
-        last: offset + limit >= notificationStore.notifications.length,
-      },
-      success: true,
-    };
-  },
-
-  getUnreadCount: async () => {
-    return {
-      data: notificationStore.unreadCount,
-      success: true,
-    };
-  },
-
-  markAsRead: async (id: number) => {
-    const notification = notificationStore.notifications.find(n => Number(n.id) === id);
-    if (notification && !notification.read) {
-      notification.read = true;
-      notificationStore.unreadCount = Math.max(0, notificationStore.unreadCount - 1);
-    }
-    return { success: true };
-  },
-
-  markAllAsRead: async () => {
-    notificationStore.notifications.forEach(n => {
-      if (!n.read) {
-        n.read = true;
-      }
-    });
-    notificationStore.unreadCount = 0;
-    return { success: true };
-  },
-
-  deleteNotification: async (id: number) => {
-    const index = notificationStore.notifications.findIndex(n => Number(n.id) === id);
-    if (index !== -1) {
-      const notification = notificationStore.notifications[index];
-      if (!notification.read) {
-        notificationStore.unreadCount = Math.max(0, notificationStore.unreadCount - 1);
-      }
-      notificationStore.notifications.splice(index, 1);
-    }
-    return { success: true };
-  },
-
-  updatePreferences: async (preferences: any) => {
-    // Mock implementation
-    return { success: true, data: preferences };
-  },
-
-  getPreferences: async () => {
-    // Mock implementation
-    return {
-      success: true,
-      data: {
-        enableEmail: true,
-        enableInApp: true,
-        enableDesktop: true,
-        alertSeverityThreshold: 'MEDIUM',
-        notificationTypes: ['ALERT_TRIGGERED', 'CASE_ASSIGNED', 'CASE_UPDATED'],
-        quietHoursStart: '22:00',
-        quietHoursEnd: '08:00',
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      },
-    };
-  },
+  return {
+    page,
+    size,
+    search: filters.search || undefined,
+    type: typeParam || undefined,
+    status: filters.status || undefined,
+    unreadOnly: filters.status === 'PENDING' ? true : undefined,
+  };
 };
 
 // Custom hooks
 export function useNotifications(filters: NotificationFilters = {}) {
   return useQuery({
     queryKey: ['notifications', filters],
-    queryFn: () => notificationsApi.getNotifications(filters),
+    queryFn: () => notificationsApi.getNotifications(buildNotificationParams(filters)),
     staleTime: 30000, // 30 seconds
     refetchInterval: 60000, // 1 minute
   });
@@ -203,6 +127,7 @@ export function useMarkAsRead() {
     mutationFn: (id: number) => notificationsApi.markAsRead(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });
       message.success('Notification marked as read');
     },
     onError: (error) => {
@@ -219,6 +144,7 @@ export function useMarkAllAsRead() {
     mutationFn: () => notificationsApi.markAllAsRead(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });
       message.success('All notifications marked as read');
     },
     onError: (error) => {
@@ -235,6 +161,7 @@ export function useDeleteNotification() {
     mutationFn: (id: number) => notificationsApi.deleteNotification(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });
       message.success('Notification deleted');
     },
     onError: (error) => {
@@ -272,8 +199,9 @@ export function useUpdateNotificationPreferences() {
 export function useRealTimeNotifications(onNotification?: (notification: WebSocketNotification) => void) {
   const { user, isAuthenticated } = useAuthStore();
   const queryClient = useQueryClient();
-  const soundRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
   const { data: preferences } = useNotificationPreferences();
+  const [isConnected, setIsConnected] = useState(false);
 
   // Request desktop notification permission on mount
   useEffect(() => {
@@ -282,24 +210,28 @@ export function useRealTimeNotifications(onNotification?: (notification: WebSock
     }
   }, [preferences]);
 
-  // Initialize sound
-  useEffect(() => {
-    soundRef.current = new Audio('/sounds/notification.mp3');
-    soundRef.current.volume = 0.5;
-    
-    return () => {
-      if (soundRef.current) {
-        soundRef.current = null;
-      }
-    };
-  }, []);
-
   const playNotificationSound = useCallback(() => {
+    if (preferences?.data?.enableSound === false) {
+      return;
+    }
+
     try {
-      if (soundRef.current && preferences?.data?.enableSound !== false) {
-        soundRef.current.currentTime = 0;
-        soundRef.current.play().catch(console.warn);
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContext();
       }
+      const audioContext = audioContextRef.current;
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.type = 'sine';
+      oscillator.frequency.value = 880;
+      gainNode.gain.value = 0.05;
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.15);
     } catch (error) {
       console.warn('Failed to play notification sound:', error);
     }
@@ -355,19 +287,9 @@ export function useRealTimeNotifications(onNotification?: (notification: WebSock
   }, [preferences, isInQuietHours]);
 
   const handleWebSocketNotification = useCallback((notificationData: WebSocketNotification) => {
-    // Add to local store
-    notificationStore.notifications.unshift(notificationData);
-    if (notificationStore.notifications.length > 100) {
-      notificationStore.notifications = notificationStore.notifications.slice(0, 100);
-    }
-    
-    if (!notificationData.read) {
-      notificationStore.unreadCount += 1;
-    }
-    notificationStore.lastUpdate = new Date();
-
-    // Invalidate queries to refresh UI
+    // Invalidate queries to refresh UI from persisted notifications
     queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    queryClient.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });
 
     // Check if should show notification
     if (!shouldShowNotification(notificationData)) {
@@ -435,7 +357,7 @@ export function useRealTimeNotifications(onNotification?: (notification: WebSock
   // WebSocket connection management
   useEffect(() => {
     if (!isAuthenticated || !user) {
-      notificationStore.isConnected = false;
+      setIsConnected(false);
       return;
     }
 
@@ -451,9 +373,14 @@ export function useRealTimeNotifications(onNotification?: (notification: WebSock
 
       // Subscribe to notifications
       const unsubscribe = wsService.subscribe('all', handleWebSocketNotification);
-      notificationStore.isConnected = wsService.isConnected();
+      setIsConnected(wsService.isConnected());
+
+      const connectionInterval = setInterval(() => {
+        setIsConnected(wsService.isConnected());
+      }, 5000);
 
       return () => {
+        clearInterval(connectionInterval);
         unsubscribe();
         // Don't disconnect here as other components might be using it
       };
@@ -461,11 +388,104 @@ export function useRealTimeNotifications(onNotification?: (notification: WebSock
   }, [isAuthenticated, user, handleWebSocketNotification]);
 
   return {
-    isConnected: notificationStore.isConnected,
+    isConnected,
     desktopNotificationManager,
     requestDesktopPermission: () => desktopNotificationManager.requestPermission(),
   };
 }
 
+export const useDesktopNotifications = (enabled: boolean = true) => {
+  const [permission, setPermission] = useState<NotificationPermission>('default');
+
+  useEffect(() => {
+    if (!enabled || typeof window === 'undefined') return;
+
+    if ('Notification' in window) {
+      setPermission(Notification.permission);
+
+      if (Notification.permission === 'default') {
+        Notification.requestPermission().then(setPermission);
+      }
+    }
+  }, [enabled]);
+
+  const showDesktopNotification = (title: string, options?: NotificationOptions) => {
+    if (permission === 'granted' && enabled) {
+      const desktopNotification = new Notification(title, {
+        icon: '/favicon.ico',
+        badge: '/favicon.ico',
+        ...options,
+      });
+
+      setTimeout(() => desktopNotification.close(), 5000);
+      return desktopNotification;
+    }
+    return null;
+  };
+
+  return { permission, showDesktopNotification };
+};
+
 // Export the desktop notification manager for direct use
 export { desktopNotificationManager };
+
+export const notificationUtils = {
+  getSeverityColor: (severity: NotificationSeverity): string => {
+    const colors = {
+      CRITICAL: '#ff4d4f',
+      HIGH: '#fa8c16',
+      MEDIUM: '#1890ff',
+      LOW: '#52c41a',
+      INFO: '#722ed1',
+    };
+    return colors[severity] || '#d9d9d9';
+  },
+
+  getSeverityIcon: (severity: NotificationSeverity): string => {
+    const icons = {
+      CRITICAL: '🚨',
+      HIGH: '⚠️',
+      MEDIUM: 'ℹ️',
+      LOW: '✅',
+      INFO: '📢',
+    };
+    return icons[severity] || 'ℹ️';
+  },
+
+  getTypeLabel: (type: NotificationType): string => {
+    const labels = {
+      ALERT_TRIGGERED: 'Alert Triggered',
+      ALERT_FIRED: 'Alert Triggered',
+      ALERT_RESOLVED: 'Alert Resolved',
+      CASE_CREATED: 'Case Created',
+      CASE_ASSIGNED: 'Case Assigned',
+      CASE_UPDATED: 'Case Updated',
+      CASE_RESOLVED: 'Case Resolved',
+      CASE_REOPENED: 'Case Reopened',
+      CASE_CLOSED: 'Case Closed',
+      TEAM_CASE_CREATED: 'Team Case',
+      TEAM_UPDATE: 'Team Update',
+      SYSTEM_MAINTENANCE: 'System Maintenance',
+      RULE_FAILED: 'Rule Failed',
+      CUSTOM: 'Notification',
+    };
+    return labels[type] || type.replace('_', ' ');
+  },
+
+  formatTimeAgo: (timestamp: string): string => {
+    const now = new Date();
+    const time = new Date(timestamp);
+    const diffInMinutes = Math.floor((now.getTime() - time.getTime()) / (1000 * 60));
+
+    if (diffInMinutes < 1) return 'Just now';
+    if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    if (diffInHours < 24) return `${diffInHours}h ago`;
+
+    const diffInDays = Math.floor(diffInHours / 24);
+    if (diffInDays < 7) return `${diffInDays}d ago`;
+
+    return time.toLocaleDateString();
+  },
+};

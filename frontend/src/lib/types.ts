@@ -47,6 +47,7 @@ export interface Case {
   alertId?: number;
   grafanaAlertId?: string;
   grafanaAlertUid?: string;
+  alertData?: string;
   resolutionTimeMinutes?: number;
 }
 
@@ -622,8 +623,15 @@ export type NotificationType =
   | 'CASE_UPDATED' 
   | 'CASE_CLOSED' 
   | 'ALERT_RESOLVED' 
+  | 'CASE_CREATED'
+  | 'CASE_RESOLVED'
+  | 'CASE_REOPENED'
+  | 'TEAM_CASE_CREATED'
+  | 'TEAM_UPDATE'
+  | 'ALERT_FIRED'
   | 'SYSTEM_MAINTENANCE' 
-  | 'RULE_FAILED';
+  | 'RULE_FAILED'
+  | 'CUSTOM';
 
 export type NotificationSeverity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'INFO';
 

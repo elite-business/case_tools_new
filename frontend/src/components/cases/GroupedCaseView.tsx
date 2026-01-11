@@ -13,7 +13,7 @@ import {
   WarningOutlined
 } from '@ant-design/icons';
 import { Case, CaseStatus, CaseSeverity } from '@/lib/types';
-import { GroupByOption } from './CaseGroupingControls';
+import { GroupByOption, ViewMode } from './CaseGroupingControls';
 import StatusIndicator from '@/components/ui-system/StatusIndicator';
 import dayjs from 'dayjs';
 
@@ -23,6 +23,7 @@ const { Text, Title } = Typography;
 interface GroupedCaseViewProps {
   cases: Case[];
   groupBy: GroupByOption;
+  viewMode?: ViewMode;
   showNestedTable?: boolean;
   onCaseClick?: (caseId: number) => void;
   loading?: boolean;
@@ -165,12 +166,22 @@ const nestedTableColumns = [
 const GroupedCaseView: React.FC<GroupedCaseViewProps> = ({
   cases,
   groupBy,
+  viewMode = 'table',
   showNestedTable = true,
   onCaseClick,
   loading = false,
 }) => {
   const groupedCases = useMemo(() => groupCases(cases, groupBy), [cases, groupBy]);
   const groupNames = Object.keys(groupedCases).sort();
+
+  const statusOrder: CaseStatus[] = ['OPEN', 'ASSIGNED', 'IN_PROGRESS', 'RESOLVED', 'CLOSED', 'CANCELLED'];
+  const kanbanGroups = useMemo(() => {
+    const groups: Record<string, Case[]> = {};
+    statusOrder.forEach(status => {
+      groups[status] = cases.filter(item => item.status === status);
+    });
+    return groups;
+  }, [cases]);
 
   if (cases.length === 0 && !loading) {
     return (
@@ -195,19 +206,107 @@ const GroupedCaseView: React.FC<GroupedCaseViewProps> = ({
 
   return (
     <div>
-      {groupBy === 'none' ? (
-        // Simple table view without grouping
-        <Table
-          dataSource={cases}
-          columns={nestedTableColumns}
-          loading={loading}
-          rowKey="id"
-          pagination={{ pageSize: 20, showSizeChanger: true }}
-          onRow={(record) => ({
-            onClick: () => onCaseClick?.(record.id),
-            style: { cursor: 'pointer' },
+      {viewMode === 'kanban' ? (
+        <Row gutter={[16, 16]} style={{ alignItems: 'flex-start' }}>
+          {statusOrder.map(status => {
+            const groupCasesList = kanbanGroups[status] || [];
+            return (
+              <Col key={status} xs={24} sm={12} lg={6}>
+                <Card
+                  size="small"
+                  title={
+                    <Space>
+                      <StatusIndicator type="status" value={status} size="small" />
+                      <Text strong>{status.replace('_', ' ')}</Text>
+                      <Badge count={groupCasesList.length} />
+                    </Space>
+                  }
+                  bodyStyle={{ padding: 12 }}
+                >
+                  {groupCasesList.length === 0 ? (
+                    <Text type="secondary" style={{ fontSize: 12 }}>No cases</Text>
+                  ) : (
+                    <Space direction="vertical" style={{ width: '100%' }} size={12}>
+                      {groupCasesList.map(caseItem => (
+                        <Card
+                          key={caseItem.id}
+                          size="small"
+                          hoverable
+                          onClick={() => onCaseClick?.(caseItem.id)}
+                        >
+                          <Space direction="vertical" style={{ width: '100%' }}>
+                            <Space>
+                              <Text strong>{caseItem.caseNumber}</Text>
+                              <Tag color={caseItem.severity === 'CRITICAL' ? 'error' : 'default'}>
+                                {caseItem.severity}
+                              </Tag>
+                            </Space>
+                            <Text ellipsis>{caseItem.title}</Text>
+                            {caseItem.slaBreached && (
+                              <Tag color="error" icon={<WarningOutlined />}>
+                                SLA Breach
+                              </Tag>
+                            )}
+                          </Space>
+                        </Card>
+                      ))}
+                    </Space>
+                  )}
+                </Card>
+              </Col>
+            );
           })}
-        />
+        </Row>
+      ) : groupBy === 'none' ? (
+        // Simple table view without grouping
+        viewMode === 'cards' ? (
+          <Row gutter={[16, 16]}>
+            {cases.map(caseItem => (
+              <Col key={caseItem.id} xs={24} sm={12} lg={8} xl={6}>
+                <Card
+                  size="small"
+                  hoverable
+                  onClick={() => onCaseClick?.(caseItem.id)}
+                  title={
+                    <Space>
+                      <Text strong>{caseItem.caseNumber}</Text>
+                      <StatusIndicator type="status" value={caseItem.status} size="small" />
+                    </Space>
+                  }
+                >
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    <Text ellipsis>{caseItem.title}</Text>
+                    <Space wrap>
+                      <Tag color={caseItem.severity === 'CRITICAL' ? 'error' : 'default'}>
+                        {caseItem.severity}
+                      </Tag>
+                      {caseItem.slaBreached && (
+                        <Tag color="error" icon={<WarningOutlined />}>
+                          SLA Breach
+                        </Tag>
+                      )}
+                    </Space>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {dayjs(caseItem.createdAt).fromNow()}
+                    </Text>
+                  </Space>
+                </Card>
+              </Col>
+            ))}
+          </Row>
+        ) : (
+          <Table
+            dataSource={cases}
+            columns={nestedTableColumns}
+            loading={loading}
+            rowKey="id"
+            pagination={{ pageSize: 20, showSizeChanger: true }}
+            onRow={(record) => ({
+              onClick: () => onCaseClick?.(record.id),
+              style: { cursor: 'pointer' },
+            })}
+          />
+        )
       ) : (
         // Grouped view
         <Collapse 
@@ -256,7 +355,7 @@ const GroupedCaseView: React.FC<GroupedCaseViewProps> = ({
                 }
                 style={{ marginBottom: 16 }}
               >
-                {showNestedTable ? (
+                {viewMode === 'table' && showNestedTable ? (
                   <Table
                     dataSource={groupCasesList}
                     columns={nestedTableColumns}

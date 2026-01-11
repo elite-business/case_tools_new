@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
@@ -233,6 +233,43 @@ export default function CaseDetailPage() {
   const slaPercent = Math.min(100, (slaElapsedHours / slaTargetHours) * 100);
   const isSlaBreached = caseDetails?.slaBreached || (slaDeadline ? dayjs().isAfter(slaDeadline) : false);
   const toHours = (value?: number) => value ? Number((value / 60).toFixed(1)) : 0;
+  const parsedAlertData = useMemo(() => {
+    if (!caseDetails?.alertData) return null;
+    try {
+      return JSON.parse(caseDetails.alertData);
+    } catch (error) {
+      return null;
+    }
+  }, [caseDetails?.alertData]);
+
+  const grafanaLinks = useMemo(() => {
+    const links: { label: string; url: string }[] = [];
+    if (!parsedAlertData) return links;
+    const grafanaBaseUrl = process.env.NEXT_PUBLIC_GRAFANA_URL || '';
+    const normalizeUrl = (value?: string) => {
+      if (!value) return undefined;
+      if (value.startsWith('http')) return value;
+      if (grafanaBaseUrl) return `${grafanaBaseUrl}${value}`;
+      return value;
+    };
+
+    const panelUrl = normalizeUrl(parsedAlertData.panelUrl
+      || parsedAlertData.panelURL
+      || parsedAlertData.annotations?.panelURL
+      || parsedAlertData.annotations?.panelUrl);
+    const dashboardUrl = normalizeUrl(parsedAlertData.dashboardUrl
+      || parsedAlertData.dashboardURL
+      || parsedAlertData.annotations?.dashboardURL
+      || parsedAlertData.annotations?.dashboardUrl);
+    const generatorUrl = normalizeUrl(parsedAlertData.generatorURL
+      || parsedAlertData.generatorUrl);
+
+    if (panelUrl) links.push({ label: 'Panel', url: panelUrl });
+    if (dashboardUrl) links.push({ label: 'Dashboard', url: dashboardUrl });
+    if (generatorUrl) links.push({ label: 'Generator', url: generatorUrl });
+
+    return links;
+  }, [parsedAlertData]);
 
   useEffect(() => {
     if (caseDetails?.assignedTeams && caseDetails.assignedTeams.length > 0 && !selectedTeamId) {
@@ -737,6 +774,22 @@ export default function CaseDetailPage() {
                     )}
                   </Space>
                 </Descriptions.Item>
+                {grafanaLinks.length > 0 && (
+                  <Descriptions.Item label="Alert Links" span={2}>
+                    <Space wrap>
+                      {grafanaLinks.map((link) => (
+                        <Button
+                          key={link.url}
+                          type="link"
+                          icon={<LinkOutlined />}
+                          onClick={() => window.open(link.url, '_blank')}
+                        >
+                          {link.label}
+                        </Button>
+                      ))}
+                    </Space>
+                  </Descriptions.Item>
+                )}
                 <Descriptions.Item label="Created By">
                   <Space>
                     <Avatar size="small" icon={<UserOutlined />} />

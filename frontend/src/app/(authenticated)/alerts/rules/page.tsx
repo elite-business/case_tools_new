@@ -57,6 +57,7 @@ import { grafanaApi, ruleAssignmentApi } from '@/lib/api-client';
 import dayjs from 'dayjs';
 import RuleAssignmentModal from '@/components/grafana/RuleAssignmentModal';
 import SqlQueryModal from '@/components/grafana/SqlQueryModal';
+import { useRoleAccess } from '@/hooks/useRoleAccess';
 
 const { confirm } = Modal;
 const { Title, Text } = Typography;
@@ -91,6 +92,8 @@ export default function AlertRulesPage() {
   const [sqlModalVisible, setSqlModalVisible] = useState(false);
   const [selectedQuery, setSelectedQuery] = useState<{ query: string; datasource?: string; title?: string }>({ query: '' });
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const { permissions } = useRoleAccess();
+  const canManageAlerts = permissions.canManageAlerts;
 
   // Fetch alert rules statistics
   const { data: rulesStats, isLoading: statsLoading } = useQuery({
@@ -311,6 +314,9 @@ export default function AlertRulesPage() {
         const totalAssignees = (record.assignedUsers?.length || 0) + (record.assignedTeams?.length || 0);
         
         if (!isAssigned) {
+          if (!canManageAlerts) {
+            return <Tag color="default">Unassigned</Tag>;
+          }
           return (
             <Button 
               size="small" 
@@ -325,7 +331,7 @@ export default function AlertRulesPage() {
           );
         }
         
-        return (
+        return canManageAlerts ? (
           <Tooltip title={`${record.assignedUsers?.length || 0} users, ${record.assignedTeams?.length || 0} teams`}>
             <Button
               type="link"
@@ -338,6 +344,8 @@ export default function AlertRulesPage() {
               {totalAssignees} assigned
             </Button>
           </Tooltip>
+        ) : (
+          <Tag color="blue">{totalAssignees} assigned</Tag>
         );
       },
     },
@@ -418,36 +426,38 @@ export default function AlertRulesPage() {
                 },
               },
               {
-                key: 'edit',
-                label: 'Edit Rule',
-                icon: <EditOutlined />,
-                onClick: () => router.push(`/alerts/rules/${record.uid}/edit`),
-              },
-              {
-                key: 'assign',
-                label: 'Manage Assignment',
-                icon: <TeamOutlined />,
-                onClick: () => {
-                  setSelectedRule(record);
-                  setAssignmentModalVisible(true);
-                },
-              },
-              {
                 key: 'sql',
                 label: 'View Query',
                 icon: <CodeOutlined />,
                 onClick: () => showSqlQuery(record),
               },
-              {
-                type: 'divider',
-              },
-              {
-                key: 'delete',
-                label: 'Delete',
-                icon: <DeleteOutlined />,
-                danger: true,
-                onClick: () => handleDelete(record),
-              },
+              ...(canManageAlerts ? [
+                {
+                  key: 'edit',
+                  label: 'Edit Rule',
+                  icon: <EditOutlined />,
+                  onClick: () => router.push(`/alerts/rules/${record.uid}/edit`),
+                },
+                {
+                  key: 'assign',
+                  label: 'Manage Assignment',
+                  icon: <TeamOutlined />,
+                  onClick: () => {
+                    setSelectedRule(record);
+                    setAssignmentModalVisible(true);
+                  },
+                },
+                {
+                  type: 'divider',
+                },
+                {
+                  key: 'delete',
+                  label: 'Delete',
+                  icon: <DeleteOutlined />,
+                  danger: true,
+                  onClick: () => handleDelete(record),
+                },
+              ] : []) as any,
             ],
           }}
         >
@@ -515,14 +525,6 @@ export default function AlertRulesPage() {
         rowKey="uid"
         toolBarRender={() => [
           <Button
-            key="create"
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => router.push('/alerts/builder')}
-          >
-            Create Rule
-          </Button>,
-          <Button
             key="refresh"
             icon={<SyncOutlined />}
             onClick={() => actionRef.current?.reload()}
@@ -578,10 +580,10 @@ export default function AlertRulesPage() {
           };
         }}
         columns={columns}
-        rowSelection={{
+        rowSelection={canManageAlerts ? {
           selectedRowKeys,
           onChange: setSelectedRowKeys,
-        }}
+        } : undefined}
         search={{
           labelWidth: 'auto',
           searchText: 'Search',
@@ -593,6 +595,7 @@ export default function AlertRulesPage() {
           showTotal: (total) => `Total ${total} rules`,
         }}
         tableAlertRender={({ selectedRowKeys }) => {
+          if (!canManageAlerts) return false;
           if (selectedRowKeys.length === 0) return false;
           return (
             <Alert
@@ -640,23 +643,25 @@ export default function AlertRulesPage() {
           setSelectedRule(null);
         }}
         extra={
-          <Space>
-            <Button
-              icon={<EditOutlined />}
-              onClick={() => router.push(`/alerts/rules/${selectedRule?.uid}/edit`)}
-            >
-              Edit
-            </Button>
-            <Button
-              icon={<TeamOutlined />}
-              onClick={() => {
-                setDetailsDrawerVisible(false);
-                setAssignmentModalVisible(true);
-              }}
-            >
-              Assign
-            </Button>
-          </Space>
+          canManageAlerts ? (
+            <Space>
+              <Button
+                icon={<EditOutlined />}
+                onClick={() => router.push(`/alerts/rules/${selectedRule?.uid}/edit`)}
+              >
+                Edit
+              </Button>
+              <Button
+                icon={<TeamOutlined />}
+                onClick={() => {
+                  setDetailsDrawerVisible(false);
+                  setAssignmentModalVisible(true);
+                }}
+              >
+                Assign
+              </Button>
+            </Space>
+          ) : null
         }
       >
         {selectedRule && (
@@ -711,7 +716,7 @@ export default function AlertRulesPage() {
       </Drawer>
 
       {/* Assignment Modal */}
-      {selectedRule && (
+      {selectedRule && canManageAlerts && (
         <RuleAssignmentModal
           visible={assignmentModalVisible}
           onClose={() => {

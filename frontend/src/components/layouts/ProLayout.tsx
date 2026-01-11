@@ -160,7 +160,7 @@ export const ProLayout: React.FC<ProLayoutProps> = ({ children }) => {
                   marginTop: 8,
                   color: isDarkMode ? '#ffffff40' : '#00000040',
                 }}>
-                  Revenue Assurance & Case Management Platform
+                  Operations & Case Management Platform
                 </div>
               </Footer>
             )}

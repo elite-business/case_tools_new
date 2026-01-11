@@ -238,7 +238,7 @@ const GrafanaRuleBuilder: React.FC<GrafanaRuleBuilderProps> = ({ className }) =>
                     rules={[{ required: true }]}
                   >
                     <Select>
-                      <Option value="revenue">Revenue Assurance</Option>
+                      <Option value="revenue">Operations Assurance</Option>
                       <Option value="network">Network Performance</Option>
                       <Option value="fraud">Fraud Detection</Option>
                       <Option value="qos">Quality of Service</Option>

@@ -62,7 +62,7 @@ const TableSelector: React.FC<TableSelectorProps> = ({ className }) => {
     if (tableName.includes('cdr')) return '📞';
     if (tableName.includes('stat')) return '📊';
     if (tableName.includes('traffic')) return '🚦';
-    if (tableName.includes('revenue')) return '💰';
+    if (tableName.includes('revenue')) return '📊';
     if (tableName.includes('alert')) return '🚨';
     if (tableName.includes('user')) return '👤';
     if (tableName.includes('case')) return '📋';
@@ -77,7 +77,7 @@ const TableSelector: React.FC<TableSelectorProps> = ({ className }) => {
       return { label: 'Statistics', color: 'green' };
     }
     if (tableName.includes('revenue') || tableName.includes('billing')) {
-      return { label: 'Revenue', color: 'gold' };
+      return { label: 'Billing', color: 'gold' };
     }
     if (tableName.includes('alert') || tableName.includes('notification')) {
       return { label: 'Alerting', color: 'red' };

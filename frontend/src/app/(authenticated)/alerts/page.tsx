@@ -214,11 +214,11 @@ const AlertsPage: React.FC = () => {
                 Manage Rules
               </Button>
             </Link>
-            <Link href="/alerts/builder">
+            {/* <Link href="/alerts/builder">
               <Button type="primary" icon={<PlusOutlined />}>
                 Create Rule
               </Button>
-            </Link>
+            </Link> */}
           </Space>
         </div>
 

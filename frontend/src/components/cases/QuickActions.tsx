@@ -14,7 +14,7 @@ import {
 } from '@ant-design/icons';
 
 const { confirm } = Modal;
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Case, QuickActionRequest, QuickActionResponse } from '@/lib/types';
 import { casesApi, handleApiError } from '@/lib/api-client';
 import { useAuthStore } from '@/store/auth-store';
@@ -36,6 +36,8 @@ interface ActionModalProps {
   onCancel: () => void;
   onSubmit: (values: any) => void;
   loading?: boolean;
+  mergeOptions?: { value: number; label: string }[];
+  isLoadingMergeOptions?: boolean;
 }
 
 const ActionModal: React.FC<ActionModalProps> = ({
@@ -44,7 +46,9 @@ const ActionModal: React.FC<ActionModalProps> = ({
   case: caseData,
   onCancel,
   onSubmit,
-  loading
+  loading,
+  mergeOptions = [],
+  isLoadingMergeOptions = false,
 }) => {
   const [form] = Form.useForm();
 
@@ -144,8 +148,9 @@ const ActionModal: React.FC<ActionModalProps> = ({
                   filterOption={(input, option) =>
                     String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
                   }
+                  loading={isLoadingMergeOptions}
+                  options={mergeOptions}
                 >
-                  {/* TODO: Load available cases for merging */}
                 </Select>
               )
             },
@@ -220,6 +225,19 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
 
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
+
+  const { data: mergeCandidates, isLoading: mergeCandidatesLoading } = useQuery({
+    queryKey: ['cases', 'merge-candidates', caseData.id],
+    queryFn: () => casesApi.getAll({ page: 0, size: 50, status: 'OPEN,ASSIGNED,IN_PROGRESS' }),
+    enabled: modalState.action === 'MERGE',
+  });
+
+  const mergeOptions = (mergeCandidates?.data?.content || [])
+    .filter((candidate: Case) => candidate.id !== caseData.id)
+    .map((candidate: Case) => ({
+      value: candidate.id,
+      label: `${candidate.caseNumber} - ${candidate.title}`,
+    }));
 
   // Quick action mutation
   const quickActionMutation = useMutation({
@@ -343,6 +361,8 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
           onCancel={handleModalCancel}
           onSubmit={handleModalSubmit}
           loading={quickActionMutation.isPending}
+          mergeOptions={mergeOptions}
+          isLoadingMergeOptions={mergeCandidatesLoading}
         />
       </>
     );
@@ -377,6 +397,8 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
         onCancel={handleModalCancel}
         onSubmit={handleModalSubmit}
         loading={quickActionMutation.isPending}
+        mergeOptions={mergeOptions}
+        isLoadingMergeOptions={mergeCandidatesLoading}
       />
     </>
   );

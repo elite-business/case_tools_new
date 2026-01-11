@@ -1,8 +1,8 @@
 package com.elite.casetools.service;
 
-import com.elite.casetools.entity.Case;
-import com.elite.casetools.entity.User;
+import com.elite.casetools.entity.*;
 import com.elite.casetools.dto.AssignmentInfo;
+import com.elite.casetools.repository.NotificationRepository;
 import com.elite.casetools.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +17,7 @@ import org.thymeleaf.context.Context;
 
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
@@ -31,13 +32,16 @@ public class NotificationService {
     private final JavaMailSender mailSender;
     private final WebSocketService webSocketService;
     private final UserRepository userRepository;
+    private final NotificationRepository notificationRepository;
     
     public NotificationService(@Autowired(required = false) JavaMailSender mailSender, 
                               WebSocketService webSocketService,
-                              UserRepository userRepository) {
+                              UserRepository userRepository,
+                              NotificationRepository notificationRepository) {
         this.mailSender = mailSender;
         this.webSocketService = webSocketService;
         this.userRepository = userRepository;
+        this.notificationRepository = notificationRepository;
     }
     
     @Value("${application.notification.email.enabled:true}")
@@ -81,6 +85,14 @@ public class NotificationService {
                         sendEmailNotification(assignee.getEmail(), subject, "case-created", variables);
                     }
                     
+                    persistInAppNotification(
+                            assignee,
+                            caseEntity,
+                            Notification.NotificationType.CASE_CREATED,
+                            subject,
+                            String.format("Case %s created: %s", caseEntity.getCaseNumber(), caseEntity.getTitle()),
+                            buildCaseMetadata(caseEntity, null)
+                    );
                     webSocketService.sendToUser(assignee.getId(), "case.created", caseEntity);
                 }
             }
@@ -88,6 +100,10 @@ public class NotificationService {
         
         // Send to admin channel
         webSocketService.sendToChannel("admin", "case.created", caseEntity);
+
+        // Persist for admins and managers
+        notifyRoleUsers(User.UserRole.ADMIN, caseEntity, subject, "CASE_CREATED");
+        notifyRoleUsers(User.UserRole.MANAGER, caseEntity, subject, "CASE_CREATED");
         
         log.info("Sent case creation notifications for case {}", caseEntity.getCaseNumber());
     }
@@ -121,6 +137,14 @@ public class NotificationService {
                         sendEmailNotification(assignee.getEmail(), subject, "case-resolved", userVariables);
                     }
                     
+                    persistInAppNotification(
+                            assignee,
+                            caseEntity,
+                            Notification.NotificationType.CASE_RESOLVED,
+                            subject,
+                            String.format("Case %s resolved", caseEntity.getCaseNumber()),
+                            buildCaseMetadata(caseEntity, null)
+                    );
                     webSocketService.sendToUser(assignee.getId(), "case.resolved", caseEntity);
                 });
             }
@@ -159,6 +183,14 @@ public class NotificationService {
                     sendEmailNotification(assignee.getEmail(), subject, "case-assigned", variables);
                 }
                 
+                persistInAppNotification(
+                        assignee,
+                        caseEntity,
+                        Notification.NotificationType.CASE_ASSIGNED,
+                        subject,
+                        String.format("Case %s assigned to you", caseEntity.getCaseNumber()),
+                        buildCaseMetadata(caseEntity, null)
+                );
                 // Send WebSocket notification
                 webSocketService.sendToUser(assignee.getId(), "case.assigned", caseEntity);
                 
@@ -197,6 +229,14 @@ public class NotificationService {
                     sendEmailNotification(assignee.getEmail(), subject, "sla-breach", userVariables);
                 }
                 
+                persistInAppNotification(
+                        assignee,
+                        caseEntity,
+                        Notification.NotificationType.SLA_BREACH,
+                        subject,
+                        String.format("SLA breached for case %s", caseEntity.getCaseNumber()),
+                        buildCaseMetadata(caseEntity, null)
+                );
                 // Send WebSocket notification
                 webSocketService.sendToUser(assignee.getId(), "case.sla-breach", caseEntity);
                 
@@ -223,6 +263,14 @@ public class NotificationService {
         // Send to all assigned users
         AssignmentInfo assignmentInfo = caseEntity.getAssignmentInfo();
         for (Long userId : assignmentInfo.getUserIds()) {
+            userRepository.findById(userId).ifPresent(user -> persistInAppNotification(
+                    user,
+                    caseEntity,
+                    Notification.NotificationType.CASE_UPDATED,
+                    "Case Updated: " + caseEntity.getCaseNumber(),
+                    String.format("Case %s updated (%s)", caseEntity.getCaseNumber(), updateType),
+                    buildCaseMetadata(caseEntity, updateType)
+            ));
             webSocketService.sendToUser(userId, "case.updated", update);
         }
     }
@@ -337,6 +385,16 @@ public class NotificationService {
                 sendSimpleEmail(user.getEmail(), subject, message);
             }
             
+            Notification.NotificationType mappedType = mapNotificationType(notificationType);
+            persistInAppNotification(
+                    user,
+                    null,
+                    mappedType,
+                    subject,
+                    message,
+                    Map.of("type", notificationType)
+            );
+
             // Send WebSocket notification
             Map<String, Object> notificationData = new HashMap<>();
             notificationData.put("type", notificationType);
@@ -350,6 +408,76 @@ public class NotificationService {
         } catch (Exception e) {
             log.error("Failed to send notification to user {}: {}", user.getLogin(), e.getMessage(), e);
         }
+    }
+
+    private void notifyRoleUsers(User.UserRole role, Case caseEntity, String subject, String notificationType) {
+        for (User admin : userRepository.findByRole(role)) {
+            persistInAppNotification(
+                    admin,
+                    caseEntity,
+                    mapNotificationType(notificationType),
+                    subject,
+                    String.format("Case %s created: %s", caseEntity.getCaseNumber(), caseEntity.getTitle()),
+                    buildCaseMetadata(caseEntity, null)
+            );
+        }
+    }
+
+    private Notification persistInAppNotification(
+            User user,
+            Case caseEntity,
+            Notification.NotificationType type,
+            String subject,
+            String message,
+            Map<String, Object> metadata) {
+        Notification notification = Notification.builder()
+                .recipientUser(user)
+                .recipientEmail(user.getEmail())
+                .recipientName(user.getName())
+                .caseEntity(caseEntity)
+                .notificationType(type != null ? type : Notification.NotificationType.CUSTOM)
+                .channel(Notification.NotificationChannel.IN_APP)
+                .priority(Notification.Priority.NORMAL)
+                .subject(subject)
+                .message(message)
+                .status(Notification.NotificationStatus.SENT)
+                .sentAt(LocalDateTime.now())
+                .additionalMetadata(metadata)
+                .build();
+        return notificationRepository.save(notification);
+    }
+
+    private Notification.NotificationType mapNotificationType(String rawType) {
+        if (rawType == null) {
+            return Notification.NotificationType.CUSTOM;
+        }
+        return switch (rawType.toUpperCase()) {
+            case "CASE_CREATED" -> Notification.NotificationType.CASE_CREATED;
+            case "CASE_ASSIGNED", "TEAM_CASE_CREATED" -> Notification.NotificationType.CASE_ASSIGNED;
+            case "CASE_UPDATED", "CASE_REOPENED" -> Notification.NotificationType.CASE_UPDATED;
+            case "CASE_RESOLVED", "CASE_CLOSED" -> Notification.NotificationType.CASE_RESOLVED;
+            case "SLA_BREACH", "SLA_WARNING" -> Notification.NotificationType.SLA_BREACH;
+            case "ALERT_FIRED", "ALERT_TRIGGERED" -> Notification.NotificationType.ALERT_FIRED;
+            case "ALERT_RESOLVED" -> Notification.NotificationType.ALERT_RESOLVED;
+            default -> Notification.NotificationType.CUSTOM;
+        };
+    }
+
+    private Map<String, Object> buildCaseMetadata(Case caseEntity, String updateType) {
+        if (caseEntity == null) {
+            return new HashMap<>();
+        }
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("caseId", caseEntity.getId());
+        metadata.put("caseNumber", caseEntity.getCaseNumber());
+        metadata.put("caseTitle", caseEntity.getTitle());
+        metadata.put("severity", caseEntity.getSeverity() != null ? caseEntity.getSeverity().name() : null);
+        metadata.put("status", caseEntity.getStatus() != null ? caseEntity.getStatus().name() : null);
+        metadata.put("priority", caseEntity.getPriority());
+        if (updateType != null) {
+            metadata.put("updateType", updateType);
+        }
+        return metadata;
     }
 
     /**

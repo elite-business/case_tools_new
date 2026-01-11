@@ -115,8 +115,28 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     /**
      * Count unread notifications for user
      */
-    @Query("SELECT COUNT(n) FROM Notification n WHERE n.recipientUser = :user AND n.status NOT IN ('read', 'CANCELLED')")
+    @Query("SELECT COUNT(n) FROM Notification n WHERE n.recipientUser = :user AND n.status NOT IN ('READ', 'CANCELLED')")
     long countUnreadNotificationsByUser(@Param("user") User user);
+
+    /**
+     * Find notifications for user with optional filters
+     */
+    @Query("""
+            SELECT n FROM Notification n
+            WHERE n.recipientUser = :user
+            AND (:unreadOnly IS NULL OR (:unreadOnly = true AND n.status <> 'READ'))
+            AND (:type IS NULL OR n.notificationType = :type)
+            AND (:search IS NULL
+                OR lower(coalesce(n.subject, '')) LIKE lower(concat('%', :search, '%'))
+                OR lower(n.message) LIKE lower(concat('%', :search, '%')))
+            ORDER BY n.createdAt DESC
+            """)
+    Page<Notification> findUserNotifications(
+            @Param("user") User user,
+            @Param("unreadOnly") Boolean unreadOnly,
+            @Param("type") Notification.NotificationType type,
+            @Param("search") String search,
+            Pageable pageable);
 
     /**
      * Find notifications by date range

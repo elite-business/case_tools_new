@@ -31,7 +31,6 @@ import {
   AlertOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
-  DollarCircleOutlined,
   UserOutlined,
   FileTextOutlined,
   DatabaseOutlined,
@@ -39,11 +38,10 @@ import {
   DownloadOutlined,
   FilterOutlined,
 } from '@ant-design/icons';
-import { Line, Area, Column, Pie, Gauge, Liquid } from '@ant-design/charts';
+import { Area, Column, Pie, Gauge } from '@ant-design/charts';
 import { useQuery } from '@tanstack/react-query';
-import { analyticsApi, casesApi, alertsApi } from '@/lib/api-client';
+import { analyticsApi } from '@/lib/api-client';
 import { useAuthStore } from '@/store/auth-store';
-import { isManagerOrHigher, canShowAdminFeatures } from '@/lib/rbac';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -54,8 +52,6 @@ export default function AnalyticsPage() {
   
   // Check user role and permissions
   const userRole = user?.role || (user?.roles && user.roles[0]) || 'VIEWER';
-  const canViewAllData = isManagerOrHigher(userRole);
-  const canViewSystemData = canShowAdminFeatures(userRole);
   const [dateRange, setDateRange] = useState([
     dayjs().subtract(30, 'day'),
     dayjs(),
@@ -124,28 +120,6 @@ export default function AnalyticsPage() {
         name: datum.severity,
         value: `${datum.count.toLocaleString()} alerts`,
       }),
-    },
-  };
-
-  const revenueProtectedConfig = {
-    data: trends?.revenueProtected || [],
-    xField: 'date',
-    yField: 'amount',
-    smooth: true,
-    color: '#52c41a',
-    point: {
-      size: 4,
-      shape: 'circle',
-      style: {
-        fill: '#52c41a',
-        stroke: '#52c41a',
-      },
-    },
-    yAxis: {
-      title: { text: 'Revenue ($)' },
-      label: {
-        formatter: (value: string) => `$${Number(value).toLocaleString()}`,
-      },
     },
   };
 
@@ -232,18 +206,12 @@ export default function AnalyticsPage() {
       key: 'avgResolutionTime',
       render: (time: number) => `${time}h`,
     },
-    {
-      title: 'Impact',
-      dataIndex: 'revenueImpact',
-      key: 'revenueImpact',
-      render: (impact: number) => `$${impact.toLocaleString()}`,
-    },
   ];
 
   return (
     <PageContainer
       title="Analytics & Insights"
-      subTitle="Revenue assurance performance metrics and system analytics"
+      subTitle="Operational performance metrics and system analytics"
       extra={[
         <Space key="controls">
           <RangePicker
@@ -297,43 +265,22 @@ export default function AnalyticsPage() {
         <Col xs={24} sm={12} lg={6}>
           <Card loading={overviewLoading}>
             <Statistic
-              title="Revenue Protected"
-              value={overview?.revenueProtected || 0}
+              title="Open Cases"
+              value={overview?.openCases || 0}
               precision={0}
-              valueStyle={{ color: '#52c41a' }}
-              prefix={<DollarCircleOutlined />}
-              formatter={(value) => `$${Number(value).toLocaleString()}`}
-              suffix={
-                <span style={{ fontSize: 14 }}>
-                  {overview?.revenueGrowth ? (
-                    <span style={{ color: '#52c41a' }}>
-                      <TrendingUpOutlined />
-                      {overview.revenueGrowth.toFixed(1)}%
-                    </span>
-                  ) : null}
-                </span>
-              }
+              valueStyle={{ color: '#faad14' }}
+              prefix={<ClockCircleOutlined />}
             />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card loading={overviewLoading}>
             <Statistic
-              title="Cases Resolved"
-              value={overview?.casesResolved || 0}
+              title="Total Cases"
+              value={overview?.totalCases || 0}
               precision={0}
               valueStyle={{ color: '#1890ff' }}
               prefix={<CheckCircleOutlined />}
-              suffix={
-                <span style={{ fontSize: 14 }}>
-                  {overview?.resolutionGrowth ? (
-                    <span style={{ color: '#52c41a' }}>
-                      <TrendingUpOutlined />
-                      {overview.resolutionGrowth.toFixed(1)}%
-                    </span>
-                  ) : null}
-                </span>
-              }
             />
           </Card>
         </Col>
@@ -366,12 +313,7 @@ export default function AnalyticsPage() {
       </Row>
 
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24} lg={12}>
-          <Card title="Revenue Protection Trend">
-            <Line {...revenueProtectedConfig} height={250} />
-          </Card>
-        </Col>
-        <Col xs={24} lg={12}>
+        <Col xs={24}>
           <Card title="Case Resolution Progress">
             <Column {...caseResolutionConfig} height={250} />
           </Card>

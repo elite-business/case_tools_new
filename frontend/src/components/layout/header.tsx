@@ -42,9 +42,9 @@ export function Header() {
   const { sidebarCollapsed, currentLanguage, setCurrentLanguage, isRTL } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [notifications] = useState([
-    { id: 1, title: 'New alert detected', description: 'Critical revenue loss detected', time: '5 min ago', unread: true, type: 'warning' },
+    { id: 1, title: 'New alert detected', description: 'Critical impact detected', time: '5 min ago', unread: true, type: 'warning' },
     { id: 2, title: 'System update completed', description: 'All services are running normally', time: '1 hour ago', unread: true, type: 'success' },
-    { id: 3, title: 'Revenue report ready', description: 'Q4 2024 report is available', time: '3 hours ago', unread: false, type: 'info' }
+    { id: 3, title: 'Operations report ready', description: 'Q4 2024 report is available', time: '3 hours ago', unread: false, type: 'info' }
   ]);
 
   useEffect(() => {

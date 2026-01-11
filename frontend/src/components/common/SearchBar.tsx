@@ -64,11 +64,11 @@ interface SearchBarProps {
 const mockSearchResults: SearchResult[] = [
   {
     id: '1',
-    title: 'Critical Alert: High Revenue Loss',
-    description: 'Revenue assurance alert detected in telecom sector',
+    title: 'Critical Alert: High Business Loss',
+    description: 'Critical alert detected in telecom sector',
     type: 'alert',
     url: '/alerts/1',
-    tags: ['critical', 'revenue', 'telecom'],
+    tags: ['critical', 'business', 'telecom'],
     priority: 'critical',
     lastAccessed: new Date('2026-01-03'),
   },
@@ -84,11 +84,11 @@ const mockSearchResults: SearchResult[] = [
   },
   {
     id: '3',
-    title: 'John Smith - Revenue Analyst',
-    description: 'Senior analyst specializing in revenue assurance',
+    title: 'John Smith - Operations Analyst',
+    description: 'Senior analyst specializing in operational assurance',
     type: 'user',
     url: '/admin/users/john-smith',
-    tags: ['analyst', 'revenue'],
+    tags: ['analyst', 'operations'],
     lastAccessed: new Date('2026-01-01'),
   },
   {

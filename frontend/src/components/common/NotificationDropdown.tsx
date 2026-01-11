@@ -57,7 +57,8 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
 
   // Queries and mutations
   const { data: notificationsResponse, isLoading } = useNotifications({ 
-    limit: maxCount,
+    size: maxCount,
+    page: 0,
     status: filter === 'unread' ? 'PENDING' : undefined 
   });
   const { data: unreadCountResponse } = useUnreadCount();
@@ -72,7 +73,7 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
   });
 
   const notifications = notificationsResponse?.data?.content || [];
-  const unreadCount = unreadCountResponse?.data || 0;
+  const unreadCount = unreadCountResponse?.data?.count || 0;
   const filteredNotifications = notifications.slice(0, maxCount);
 
   // Event handlers

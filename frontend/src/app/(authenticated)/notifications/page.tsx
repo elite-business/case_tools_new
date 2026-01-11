@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Card,
   Row,
@@ -18,6 +18,7 @@ import {
   Switch,
   Divider,
   message,
+  Pagination,
 } from 'antd';
 import {
   SearchOutlined,
@@ -56,6 +57,8 @@ const NotificationsPage: React.FC = () => {
   const [selectedSeverity, setSelectedSeverity] = useState<NotificationSeverity[]>([]);
   const [activeTab, setActiveTab] = useState('all');
   const [showSettings, setShowSettings] = useState(false);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(20);
 
   // Queries and mutations
   const { data: notificationsResponse, isLoading, error, refetch } = useNotifications({
@@ -63,6 +66,8 @@ const NotificationsPage: React.FC = () => {
     type: selectedTypes,
     severity: selectedSeverity,
     status: activeTab === 'unread' ? 'PENDING' : undefined,
+    page,
+    size: pageSize,
   });
   
   const { data: unreadCountResponse } = useUnreadCount();
@@ -81,9 +86,13 @@ const NotificationsPage: React.FC = () => {
 
   // Computed values
   const notifications = notificationsResponse?.data?.content || [];
-  const unreadCount = unreadCountResponse?.data || 0;
-  const totalPages = notificationsResponse?.data?.totalPages || 0;
+  const unreadCount = unreadCountResponse?.data?.count || 0;
   const currentPage = notificationsResponse?.data?.number || 0;
+  const totalItems = notificationsResponse?.data?.totalElements || 0;
+
+  useEffect(() => {
+    setPage(0);
+  }, [searchTerm, selectedTypes, selectedSeverity, activeTab]);
 
   // Event handlers
   const handleMarkAsRead = (id: number) => {
@@ -254,6 +263,23 @@ const NotificationsPage: React.FC = () => {
                 showActions={true}
               />
             ))}
+            {totalItems > pageSize && (
+              <div className="flex justify-center pt-4">
+                <Pagination
+                  current={currentPage + 1}
+                  pageSize={pageSize}
+                  total={totalItems}
+                  showSizeChanger
+                  onChange={(nextPage, nextSize) => {
+                    setPage(nextPage - 1);
+                    if (nextSize !== pageSize) {
+                      setPageSize(nextSize);
+                      setPage(0);
+                    }
+                  }}
+                />
+              </div>
+            )}
           </div>
         )}
       </Card>

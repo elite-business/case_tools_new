@@ -88,7 +88,7 @@ const FolderSelector: React.FC<FolderSelectorProps> = ({ className }) => {
       return 'Telecom and CDR monitoring';
     }
     if (folder.title.toLowerCase().includes('revenue')) {
-      return 'Revenue assurance and billing';
+      return 'Business assurance and billing';
     }
     return 'General folder for organizing alert rules';
   };

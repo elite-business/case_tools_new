@@ -172,7 +172,7 @@ export default function CasesPage() {
       label: 'Category',
       type: 'select',
       options: [
-        { label: 'Revenue Loss', value: 'REVENUE_LOSS' },
+        { label: 'Business Loss', value: 'REVENUE_LOSS' },
         { label: 'Network Issue', value: 'NETWORK_ISSUE' },
         { label: 'Quality Issue', value: 'QUALITY' },
         { label: 'Fraud Alert', value: 'FRAUD' },

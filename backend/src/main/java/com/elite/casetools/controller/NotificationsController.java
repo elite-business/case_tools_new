@@ -1,15 +1,16 @@
 package com.elite.casetools.controller;
 
 import com.elite.casetools.dto.PaginatedResponse;
+import com.elite.casetools.entity.Notification;
 import com.elite.casetools.entity.User;
-import com.elite.casetools.service.NotificationService;
+import com.elite.casetools.repository.NotificationRepository;
 import com.elite.casetools.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -19,7 +20,10 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 /**
  * Controller for managing user notifications
@@ -32,8 +36,8 @@ import java.util.*;
 @Tag(name = "Notifications", description = "User notification management endpoints")
 public class NotificationsController {
 
-    private final NotificationService notificationService;
     private final UserService userService;
+    private final NotificationRepository notificationRepository;
 
     /**
      * Get user notifications
@@ -44,41 +48,46 @@ public class NotificationsController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) Boolean unreadOnly,
-            @RequestParam(required = false) String type) {
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String search) {
         
-        log.info("Fetching notifications - page: {}, size: {}, unreadOnly: {}, type: {}", 
-            page, size, unreadOnly, type);
+        log.info("Fetching notifications - page: {}, size: {}, unreadOnly: {}, status: {}, type: {}, search: {}", 
+            page, size, unreadOnly, status, type, search);
         
         try {
             User currentUser = getCurrentUser();
             if (currentUser == null) {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
             }
-            
-            // For now, return mock data since NotificationService may not have full implementation
-            List<NotificationDto> notifications = generateMockNotifications(currentUser.getId(), unreadOnly);
-            
-            // Filter by type if specified
-            if (type != null && !type.isEmpty()) {
-                notifications = notifications.stream()
-                    .filter(n -> n.getType().equalsIgnoreCase(type))
-                    .toList();
+
+            Boolean resolvedUnreadOnly = unreadOnly;
+            if (resolvedUnreadOnly == null && status != null && status.equalsIgnoreCase("PENDING")) {
+                resolvedUnreadOnly = true;
             }
-            
-            // Apply pagination
-            int start = page * size;
-            int end = Math.min(start + size, notifications.size());
-            List<NotificationDto> paginatedList = notifications.subList(start, end);
-            
-            PaginatedResponse<NotificationDto> response = new PaginatedResponse<>();
-            response.setContent(paginatedList);
-            response.setTotalElements(notifications.size());
-            response.setTotalPages((int) Math.ceil((double) notifications.size() / size));
-            response.setNumber(page);
-            response.setSize(size);
-            response.setFirst(page == 0);
-            response.setLast(end >= notifications.size());
-            
+
+            Notification.NotificationType notificationType = null;
+            if (type != null && !type.isBlank()) {
+                try {
+                    notificationType = Notification.NotificationType.valueOf(type.toUpperCase());
+                } catch (IllegalArgumentException ex) {
+                    notificationType = Notification.NotificationType.CUSTOM;
+                }
+            }
+
+            PageRequest pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+            Page<Notification> notifications = notificationRepository.findUserNotifications(
+                    currentUser,
+                    resolvedUnreadOnly,
+                    notificationType,
+                    search,
+                    pageable
+            );
+
+            PaginatedResponse<NotificationDto> response = PaginatedResponse.fromPage(
+                    notifications.map(this::toDto)
+            );
+
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Failed to fetch notifications", e);
@@ -99,9 +108,8 @@ public class NotificationsController {
             if (currentUser == null) {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
             }
-            
-            // Mock unread count
-            int unreadCount = 3;
+
+            long unreadCount = notificationRepository.countUnreadNotificationsByUser(currentUser);
             
             return ResponseEntity.ok(Map.of(
                 "count", unreadCount,
@@ -126,12 +134,21 @@ public class NotificationsController {
             if (currentUser == null) {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
             }
-            
-            // Mock success response
+
+            Optional<Notification> notification = notificationRepository.findById(id);
+            if (notification.isEmpty() || notification.get().getRecipientUser() == null
+                    || !notification.get().getRecipientUser().getId().equals(currentUser.getId())) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+            }
+
+            Notification entity = notification.get();
+            entity.markAsRead();
+            notificationRepository.save(entity);
+
             return ResponseEntity.ok(Map.of(
-                "success", true,
-                "notificationId", id,
-                "message", "Notification marked as read"
+                    "success", true,
+                    "notificationId", id,
+                    "message", "Notification marked as read"
             ));
         } catch (Exception e) {
             log.error("Failed to mark notification as read", e);
@@ -152,12 +169,15 @@ public class NotificationsController {
             if (currentUser == null) {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
             }
-            
-            // Mock success response
+
+            List<Notification> unread = notificationRepository.findUnreadNotificationsByUser(currentUser);
+            unread.forEach(Notification::markAsRead);
+            notificationRepository.saveAll(unread);
+
             return ResponseEntity.ok(Map.of(
-                "success", true,
-                "message", "All notifications marked as read",
-                "count", 5
+                    "success", true,
+                    "message", "All notifications marked as read",
+                    "count", unread.size()
             ));
         } catch (Exception e) {
             log.error("Failed to mark all notifications as read", e);
@@ -234,8 +254,14 @@ public class NotificationsController {
             if (currentUser == null) {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
             }
-            
-            // Mock deletion
+
+            Optional<Notification> notification = notificationRepository.findById(id);
+            if (notification.isEmpty() || notification.get().getRecipientUser() == null
+                    || !notification.get().getRecipientUser().getId().equals(currentUser.getId())) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+            }
+
+            notificationRepository.delete(notification.get());
             return ResponseEntity.noContent().build();
         } catch (Exception e) {
             log.error("Failed to delete notification", e);
@@ -288,68 +314,38 @@ public class NotificationsController {
         return null;
     }
 
-    private List<NotificationDto> generateMockNotifications(Long userId, Boolean unreadOnly) {
-        List<NotificationDto> notifications = new ArrayList<>();
-        
-        // Generate some mock notifications
-        notifications.add(NotificationDto.builder()
-            .id(1L)
-            .userId(userId)
-            .type("CASE_ASSIGNMENT")
-            .title("New Case Assignment")
-            .message("You have been assigned to case #CASE-2024-001")
-            .isRead(false)
-            .createdAt(LocalDateTime.now().minusHours(1))
-            .data(Map.of("caseId", 1, "caseNumber", "CASE-2024-001"))
-            .build());
-            
-        notifications.add(NotificationDto.builder()
-            .id(2L)
-            .userId(userId)
-            .type("ALERT")
-            .title("Critical Alert")
-            .message("High revenue loss detected in MSC region")
-            .isRead(false)
-            .createdAt(LocalDateTime.now().minusHours(2))
-            .data(Map.of("alertId", 100, "severity", "critical"))
-            .build());
-            
-        if (unreadOnly == null || !unreadOnly) {
-            notifications.add(NotificationDto.builder()
-                .id(3L)
-                .userId(userId)
-                .type("CASE_UPDATE")
-                .title("Case Status Update")
-                .message("Case #CASE-2024-002 has been resolved")
-                .isRead(true)
-                .createdAt(LocalDateTime.now().minusHours(5))
-                .data(Map.of("caseId", 2, "caseNumber", "CASE-2024-002"))
-                .build());
-                
-            notifications.add(NotificationDto.builder()
-                .id(4L)
-                .userId(userId)
-                .type("SYSTEM")
-                .title("System Maintenance")
-                .message("Scheduled maintenance tonight at 2:00 AM")
-                .isRead(true)
-                .createdAt(LocalDateTime.now().minusDays(1))
-                .data(Map.of())
-                .build());
+    private NotificationDto toDto(Notification notification) {
+        Map<String, Object> data = new HashMap<>();
+        if (notification.getAdditionalMetadata() != null) {
+            data.putAll(notification.getAdditionalMetadata());
         }
-        
-        notifications.add(NotificationDto.builder()
-            .id(5L)
-            .userId(userId)
-            .type("COMMENT")
-            .title("New Comment")
-            .message("John Doe commented on case #CASE-2024-001")
-            .isRead(false)
-            .createdAt(LocalDateTime.now().minusMinutes(30))
-            .data(Map.of("caseId", 1, "commentId", 50, "author", "John Doe"))
-            .build());
-        
-        return notifications;
+        if (notification.getTemplateVariables() != null) {
+            data.putAll(notification.getTemplateVariables());
+        }
+        if (notification.getCaseEntity() != null) {
+            data.putIfAbsent("caseId", notification.getCaseEntity().getId());
+            data.putIfAbsent("caseNumber", notification.getCaseEntity().getCaseNumber());
+        }
+
+        String severity = "INFO";
+        Object severityValue = data.get("severity");
+        if (severityValue instanceof String) {
+            severity = ((String) severityValue).toUpperCase();
+        }
+
+        return NotificationDto.builder()
+                .id(notification.getId())
+                .userId(notification.getRecipientUser() != null ? notification.getRecipientUser().getId() : null)
+                .type(notification.getNotificationType() != null ? notification.getNotificationType().name() : "CUSTOM")
+                .title(notification.getSubject() != null ? notification.getSubject() : "Notification")
+                .message(notification.getMessage())
+                .severity(severity)
+                .status(notification.getStatus() != null ? notification.getStatus().name() : "SENT")
+                .isRead(notification.isRead())
+                .createdAt(notification.getCreatedAt())
+                .readAt(notification.getReadAt())
+                .data(data)
+                .build();
     }
 
     /**
@@ -361,6 +357,8 @@ public class NotificationsController {
         private String type;
         private String title;
         private String message;
+        private String severity;
+        private String status;
         private Boolean isRead;
         private LocalDateTime createdAt;
         private LocalDateTime readAt;
@@ -386,6 +384,12 @@ public class NotificationsController {
 
         public String getMessage() { return message; }
         public void setMessage(String message) { this.message = message; }
+
+        public String getSeverity() { return severity; }
+        public void setSeverity(String severity) { this.severity = severity; }
+
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
 
         public Boolean getIsRead() { return isRead; }
         public void setIsRead(Boolean isRead) { this.isRead = isRead; }
@@ -425,6 +429,16 @@ public class NotificationsController {
 
             public NotificationDtoBuilder message(String message) {
                 dto.message = message;
+                return this;
+            }
+
+            public NotificationDtoBuilder severity(String severity) {
+                dto.severity = severity;
+                return this;
+            }
+
+            public NotificationDtoBuilder status(String status) {
+                dto.status = status;
                 return this;
             }
 

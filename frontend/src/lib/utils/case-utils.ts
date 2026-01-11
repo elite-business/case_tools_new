@@ -182,7 +182,7 @@ export function formatResolutionTime(minutes?: number): string {
  */
 export function getCategoryLabel(category: string): string {
   const categoryMap: Record<string, string> = {
-    'REVENUE_LOSS': 'Revenue Loss',
+    'REVENUE_LOSS': 'Business Loss',
     'NETWORK_ISSUE': 'Network Issue',
     'QUALITY': 'Quality Issue',
     'FRAUD': 'Fraud Alert',

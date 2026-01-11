@@ -703,7 +703,7 @@ export default function RuleAssignmentsPage() {
                 rules={[{ required: true }]}
               >
                 <Select>
-                  <Option value="REVENUE_LOSS">Revenue Loss</Option>
+                  <Option value="REVENUE_LOSS">Business Loss</Option>
                   <Option value="NETWORK_ISSUE">Network Issue</Option>
                   <Option value="QUALITY_ISSUE">Quality Issue</Option>
                   <Option value="FRAUD_ALERT">Fraud Alert</Option>

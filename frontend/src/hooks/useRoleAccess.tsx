@@ -103,7 +103,7 @@ const rolePermissionsMap: Record<UserRole, RolePermissions> = {
     canAssignCases: false,
     canViewAlerts: true,
     canManageAlerts: false,
-    canViewRuleAssignments: false,
+    canViewRuleAssignments: true,
     canManageRuleAssignments: false,
     canViewTeams: false,
     canManageTeams: false,

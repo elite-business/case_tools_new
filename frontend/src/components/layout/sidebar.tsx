@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
@@ -29,6 +29,9 @@ import {
 } from '@ant-design/icons';
 import { useTheme } from '@/contexts/theme-context';
 import type { MenuProps } from 'antd';
+import { useQuery } from '@tanstack/react-query';
+import { grafanaApi } from '@/lib/api-client';
+import { useRoleAccess } from '@/hooks/useRoleAccess';
 
 const { Sider } = Layout;
 const { Text } = Typography;
@@ -47,16 +50,64 @@ export function Sidebar() {
   const { t } = useTranslation();
   const { token } = theme.useToken();
   const { sidebarCollapsed, setSidebarCollapsed, isRTL } = useTheme();
+  const { permissions } = useRoleAccess();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openKeys, setOpenKeys] = useState<string[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
 
+  const canViewGrafanaDashboards = permissions.canViewGrafanaIntegration;
+  const { data: grafanaDashboards } = useQuery({
+    queryKey: ['grafana', 'dashboards'],
+    queryFn: () => grafanaApi.getDashboards(),
+    enabled: canViewGrafanaDashboards,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const grafanaBaseUrl = process.env.NEXT_PUBLIC_GRAFANA_URL || '';
+  const dashboardChildren = useMemo(() => {
+    if (!canViewGrafanaDashboards) {
+      return undefined;
+    }
+
+    const dashboards = grafanaDashboards?.data || [];
+    return [
+      {
+        key: '/dashboard',
+        icon: <DashboardOutlined />,
+        label: <Link href="/dashboard">{t('nav.dashboard') || 'Dashboard'}</Link>,
+      },
+      ...dashboards.map((dashboard: any) => {
+        const url = dashboard.url
+          ? dashboard.url.startsWith('http')
+            ? dashboard.url
+            : `${grafanaBaseUrl}${dashboard.url}`
+          : '#';
+        return {
+          key: `grafana-${dashboard.uid || dashboard.id}`,
+          icon: <BarChartOutlined />,
+          label: (
+            <a href={url} target="_blank" rel="noreferrer">
+              {dashboard.title}
+            </a>
+          ),
+        };
+      }),
+    ];
+  }, [canViewGrafanaDashboards, grafanaDashboards, grafanaBaseUrl, t]);
+
   // Define menu items matching actual routes
   const menuItems: MenuItem[] = [
     {
-      key: '/dashboard',
+      key: 'dashboard-group',
       icon: <DashboardOutlined />,
-      label: <Link href="/dashboard">{t('nav.dashboard') || 'Dashboard'}</Link>,
+      label: t('nav.dashboard') || 'Dashboard',
+      children: dashboardChildren || [
+        {
+          key: '/dashboard',
+          icon: <DashboardOutlined />,
+          label: <Link href="/dashboard">{t('nav.dashboard') || 'Dashboard'}</Link>,
+        },
+      ],
     },
     {
       key: 'cases-group',

@@ -344,7 +344,7 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ className }) => {
                     <div className="flex items-center justify-between mb-2">
                       <Text strong className="text-sm">{suggestion.title}</Text>
                       <Tag color={suggestion.category === 'revenue' ? 'gold' : 'blue'} className="text-xs">
-                        {suggestion.category}
+                        {suggestion.category === 'revenue' ? 'business' : suggestion.category}
                       </Tag>
                     </div>
                     <Text type="secondary" className="text-xs block">

@@ -22,16 +22,12 @@ import {
   message,
   Badge,
   Tooltip,
-  Skeleton,
   Empty,
   Divider,
 } from 'antd';
 import {
-  ArrowUpOutlined,
-  ArrowDownOutlined,
   UserOutlined,
   AlertOutlined,
-  DollarOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   WarningOutlined,
@@ -41,11 +37,7 @@ import {
   ExportOutlined,
   PlusOutlined,
   EyeOutlined,
-  RiseOutlined,
-  FallOutlined,
-  UpOutlined,
   BarChartOutlined,
-  CalendarOutlined,
   BellOutlined,
   TeamOutlined,
   DashboardOutlined,
@@ -75,7 +67,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { casesApi, alertsApi, analyticsApi, systemApi, handleApiError } from '@/lib/api-client';
 import { useWebSocketContext } from '@/components/providers/WebSocketProvider';
 import { useAuthStore } from '@/store/auth-store';
-import { isManagerOrHigher, canShowAdminFeatures } from '@/lib/rbac';
+import { isManagerOrHigher } from '@/lib/rbac';
 import MetricsCard from '@/components/ui-system/MetricsCard';
 import StatusIndicator from '@/components/ui-system/StatusIndicator';
 import dayjs from 'dayjs';
@@ -98,7 +90,6 @@ export default function DashboardPage() {
   // Check user role and permissions
   const userRole = user?.role || (user?.roles && user.roles[0]) || 'VIEWER';
   const canViewAllData = isManagerOrHigher(userRole);
-  const canViewSystemData = canShowAdminFeatures(userRole);
 
   // API Queries
   const { data: overviewData, isLoading: overviewLoading, refetch: refetchOverview } = useQuery({
@@ -107,6 +98,7 @@ export default function DashboardPage() {
       startDate: dateRange[0].format('YYYY-MM-DD'),
       endDate: dateRange[1].format('YYYY-MM-DD'),
     }),
+    enabled: canViewAllData,
   });
 
   const { data: trendsData, isLoading: trendsLoading } = useQuery({
@@ -116,12 +108,14 @@ export default function DashboardPage() {
       endDate: dateRange[1].format('YYYY-MM-DD'),
       interval: timeframe,
     }),
+    enabled: canViewAllData,
   });
 
   const { data: casesStats } = useQuery({
     queryKey: ['cases', 'stats'],
     queryFn: () => casesApi.getStats(),
     refetchInterval: 30000, // Refresh every 30 seconds
+    enabled: canViewAllData,
   });
 
   const { data: recentAlerts } = useQuery({
@@ -132,12 +126,21 @@ export default function DashboardPage() {
       sort: 'triggeredAt,desc' 
     }),
     refetchInterval: 15000, // Refresh every 15 seconds
+    enabled: canViewAllData,
   });
 
   const { data: systemHealth } = useQuery({
     queryKey: ['system', 'health'],
     queryFn: () => systemApi.getHealth(),
     refetchInterval: 60000, // Refresh every minute
+    enabled: canViewAllData,
+  });
+
+  const { data: myCasesResponse, isLoading: myCasesLoading } = useQuery({
+    queryKey: ['cases', 'my-cases'],
+    queryFn: () => casesApi.getMyCases(),
+    refetchInterval: 30000,
+    enabled: !canViewAllData,
   });
 
   // Auto-refresh data when WebSocket notifications arrive
@@ -145,12 +148,15 @@ export default function DashboardPage() {
     if (notifications.length > 0) {
       const latest = notifications[0];
       if (latest.type === 'alert' || latest.type === 'case_update') {
-        queryClient.invalidateQueries({ queryKey: ['analytics'] });
-        queryClient.invalidateQueries({ queryKey: ['cases', 'stats'] });
-        queryClient.invalidateQueries({ queryKey: ['alerts', 'recent'] });
+        if (canViewAllData) {
+          queryClient.invalidateQueries({ queryKey: ['analytics'] });
+          queryClient.invalidateQueries({ queryKey: ['cases', 'stats'] });
+          queryClient.invalidateQueries({ queryKey: ['alerts', 'recent'] });
+        }
+        queryClient.invalidateQueries({ queryKey: ['cases', 'my-cases'] });
       }
     }
-  }, [notifications, queryClient]);
+  }, [notifications, queryClient, canViewAllData]);
 
   const handleRefresh = () => {
     refetchOverview();
@@ -288,12 +294,18 @@ export default function DashboardPage() {
   const stats = {
     totalAlerts: overviewData?.data?.totalAlerts || 0,
     activeRules: overviewData?.data?.activeRules || 0,
-    revenueProtected: overviewData?.data?.revenueProtected || 0,
     systemUsers: overviewData?.data?.systemUsers || 0,
     alertsGrowth: overviewData?.data?.alertsGrowth || 0,
     rulesGrowth: overviewData?.data?.rulesGrowth || 0,
-    revenueGrowth: overviewData?.data?.revenueGrowth || 0,
     usersGrowth: overviewData?.data?.usersGrowth || 0,
+  };
+
+  const myCases = myCasesResponse?.data || [];
+  const myCaseStats = {
+    open: myCases.filter((item: any) => ['OPEN', 'ASSIGNED'].includes(item.status)).length,
+    inProgress: myCases.filter((item: any) => item.status === 'IN_PROGRESS').length,
+    resolved: myCases.filter((item: any) => ['RESOLVED', 'CLOSED'].includes(item.status)).length,
+    slaBreached: myCases.filter((item: any) => item.slaBreached).length,
   };
 
   return (
@@ -325,8 +337,8 @@ export default function DashboardPage() {
                 </Title>
                 <Paragraph type="secondary" style={{ margin: 0 }}>
                   {canViewAllData 
-                    ? 'System-wide monitoring and analytics for telecom revenue protection'
-                    : 'Your personal overview of assigned cases and team performance'
+                    ? 'System-wide monitoring and analytics for case management'
+                    : 'Your personal overview of assigned cases and workload'
                   }
                 </Paragraph>
                 {!canViewAllData && (
@@ -342,408 +354,529 @@ export default function DashboardPage() {
               </Space>
             </Col>
             <Col>
-              <Space>
-                <RangePicker
-                  value={dateRange as any}
-                  onChange={(dates) => dates && setDateRange([dates[0]!, dates[1]!])}
-                  presets={[
-                    { label: 'Last 7 Days', value: [dayjs().subtract(7, 'day'), dayjs()] },
-                    { label: 'Last 30 Days', value: [dayjs().subtract(30, 'day'), dayjs()] },
-                    { label: 'Last 3 Months', value: [dayjs().subtract(3, 'month'), dayjs()] },
-                  ]}
-                />
-                <Button 
-                  icon={<ReloadOutlined />} 
-                  onClick={handleRefresh}
-                  loading={overviewLoading}
-                >
-                  Refresh
-                </Button>
-                <Button icon={<ExportOutlined />}>Export</Button>
-                <Button 
-                  type="primary" 
-                  icon={<PlusOutlined />}
-                  onClick={() => router.push('/alerts/builder')}
-                >
-                  Create Rule
-                </Button>
-              </Space>
-            </Col>
-          </Row>
-        </div>
-
-        {/* Enhanced Statistics Cards */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-            <Col xs={24} sm={12} lg={6}>
-              <MetricsCard
-                title="Total Alerts"
-                value={stats.totalAlerts}
-                icon={<AlertOutlined />}
-                color="#ff4d4f"
-                loading={overviewLoading}
-                trend={stats.alertsGrowth !== 0 ? {
-                  value: stats.alertsGrowth,
-                  isPositive: stats.alertsGrowth < 0, // Fewer alerts is positive
-                  label: 'vs last period'
-                } : undefined}
-                onClick={() => router.push('/alerts/history')}
-                tooltip="Total number of triggered alerts across all rules"
-              />
-            </Col>
-            <Col xs={24} sm={12} lg={6}>
-              <MetricsCard
-                title="Active Rules"
-                value={stats.activeRules}
-                icon={<FileProtectOutlined />}
-                color="#1677ff"
-                loading={overviewLoading}
-                trend={stats.rulesGrowth !== 0 ? {
-                  value: stats.rulesGrowth,
-                  isPositive: stats.rulesGrowth > 0,
-                  label: 'vs last period'
-                } : undefined}
-                onClick={() => router.push('/alerts/rules')}
-                tooltip="Number of active alert rules monitoring the system"
-              />
-            </Col>
-            <Col xs={24} sm={12} lg={6}>
-              <MetricsCard
-                title="Revenue Protected"
-                value={stats.revenueProtected}
-                prefix="$"
-                color="#52c41a"
-                loading={overviewLoading}
-                formatter={(value) => `${Number(value).toLocaleString()}`}
-                trend={stats.revenueGrowth !== 0 ? {
-                  value: stats.revenueGrowth,
-                  isPositive: stats.revenueGrowth > 0,
-                  label: 'vs last period'
-                } : undefined}
-                onClick={() => router.push('/analytics/reports')}
-                tooltip="Estimated revenue protected by alert detection"
-                extra={
-                  <Space size={4}>
-                    <UpOutlined style={{ color: '#52c41a' }} />
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      Monthly target: $2.5M
-                    </Text>
-                  </Space>
-                }
-              />
-            </Col>
-            <Col xs={24} sm={12} lg={6}>
-              <MetricsCard
-                title="Active Users"
-                value={stats.systemUsers}
-                icon={<TeamOutlined />}
-                color="#722ed1"
-                loading={overviewLoading}
-                trend={stats.usersGrowth !== 0 ? {
-                  value: stats.usersGrowth,
-                  isPositive: stats.usersGrowth > 0,
-                  label: 'vs last period'
-                } : undefined}
-                onClick={() => router.push('/admin/users')}
-                tooltip="Number of active users in the system"
-              />
-            </Col>
-          </Row>
-        </motion.div>
-
-        {/* Charts Row */}
-        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-          <Col xs={24} lg={16}>
-            <Card 
-              title="Alert Trends" 
-              extra={
-                <Segmented 
-                  options={[
-                    { label: 'Daily', value: 'daily' },
-                    { label: 'Weekly', value: 'weekly' },
-                    { label: 'Monthly', value: 'monthly' }
-                  ]} 
-                  value={timeframe}
-                  onChange={setTimeframe}
-                />
-              }
-              loading={trendsLoading}
-            >
-              {trendsData?.data?.alertTrends?.length > 0 ? (
-                <Area {...areaConfig} height={300} />
-              ) : (
-                <div style={{ 
-                  height: 300, 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center',
-                  color: '#999'
-                }}>
-                  No trend data available for selected period
-                </div>
-              )}
-            </Card>
-          </Col>
-          <Col xs={24} lg={8}>
-            <Card title="Alert Severity Distribution" loading={overviewLoading}>
-              {overviewData?.data?.severityDistribution?.length > 0 ? (
-                <Pie {...pieConfig} height={300} />
-              ) : (
-                <div style={{ 
-                  height: 300, 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center',
-                  color: '#999'
-                }}>
-                  No alerts to display
-                </div>
-              )}
-            </Card>
-          </Col>
-        </Row>
-
-        {/* Table and Activities */}
-        <Row gutter={[16, 16]}>
-          <Col xs={24} lg={16}>
-            <Card 
-              title="Recent Alerts" 
-              extra={
+              {canViewAllData ? (
                 <Space>
+                  <RangePicker
+                    value={dateRange as any}
+                    onChange={(dates) => dates && setDateRange([dates[0]!, dates[1]!])}
+                    presets={[
+                      { label: 'Last 7 Days', value: [dayjs().subtract(7, 'day'), dayjs()] },
+                      { label: 'Last 30 Days', value: [dayjs().subtract(30, 'day'), dayjs()] },
+                      { label: 'Last 3 Months', value: [dayjs().subtract(3, 'month'), dayjs()] },
+                    ]}
+                  />
                   <Button 
-                    type="text" 
-                    size="small"
-                    onClick={() => router.push('/alerts/history')}
+                    icon={<ReloadOutlined />} 
+                    onClick={handleRefresh}
+                    loading={overviewLoading}
                   >
-                    View All
+                    Refresh
                   </Button>
+                  <Button icon={<ExportOutlined />}>Export</Button>
                   <Button 
                     type="primary" 
-                    size="small"
+                    icon={<PlusOutlined />}
                     onClick={() => router.push('/alerts/builder')}
                   >
                     Create Rule
                   </Button>
                 </Space>
-              }
-            >
-              <Table 
-                columns={alertColumns} 
-                dataSource={recentAlerts?.data?.content || []} 
-                pagination={false}
-                size="middle"
-                loading={!recentAlerts}
-                locale={{ 
-                  emptyText: 'No recent alerts' 
-                }}
-                rowKey="id"
-              />
-            </Card>
-          </Col>
-          <Col xs={24} lg={8}>
-            <Card 
-              title="Live Activity Feed"
-              extra={
-                <Badge 
-                  status={isConnected ? "processing" : "error"} 
-                  text={isConnected ? "Live" : "Offline"} 
-                />
-              }
-            >
-              {recentActivities.length > 0 ? (
-                <Timeline mode="left">
-                  {recentActivities.map((activity, index) => (
-                    <Timeline.Item key={index} color={activity.color} dot={activity.icon}>
-                      <div style={{ marginBottom: 12 }}>
-                        <Text strong style={{ fontSize: 13 }}>{activity.title}</Text>
-                        <br />
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                          {activity.description}
-                        </Text>
-                        <br />
-                        <Text type="secondary" style={{ fontSize: 11 }}>
-                          {activity.time}
-                        </Text>
-                      </div>
-                    </Timeline.Item>
-                  ))}
-                </Timeline>
               ) : (
-                <div style={{ 
-                  textAlign: 'center', 
-                  padding: '40px 20px', 
-                  color: '#999' 
-                }}>
-                  <ClockCircleOutlined style={{ fontSize: 24, marginBottom: 8 }} />
-                  <br />
-                  No recent activity
-                </div>
-              )}
-            </Card>
-          </Col>
-        </Row>
-
-        {/* System Status */}
-        <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-          <Col span={24}>
-            <Card 
-              title="System Health Status"
-              extra={
                 <Space>
-                  <Badge 
-                    status={systemHealth?.data?.overallStatus === 'HEALTHY' ? 'success' : 
-                            systemHealth?.data?.overallStatus === 'DEGRADED' ? 'warning' : 'error'} 
-                    text={systemHealth?.data?.overallStatus || 'Unknown'} 
-                  />
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    Last check: {systemHealth?.data?.lastCheck ? 
-                      dayjs(systemHealth.data.lastCheck).fromNow() : 'Never'}
-                  </Text>
+                  <Button 
+                    icon={<ReloadOutlined />} 
+                    onClick={() => queryClient.invalidateQueries({ queryKey: ['cases', 'my-cases'] })}
+                    loading={myCasesLoading}
+                  >
+                    Refresh
+                  </Button>
+                  <Button type="primary" onClick={() => router.push('/cases')}>
+                    View My Cases
+                  </Button>
                 </Space>
-              }
-              loading={!systemHealth}
-            >
-              <Row gutter={[16, 16]}>
-                <Col xs={24} sm={12} lg={6}>
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.1 }}
-                  >
-                    <Space direction="vertical" style={{ width: '100%', textAlign: 'center' }}>
-                      <Space align="center">
-                        <BarChartOutlined style={{ color: '#1677ff' }} />
-                        <Text type="secondary" strong>Database</Text>
-                      </Space>
-                      <StatusIndicator
-                        type="health"
-                        value={systemHealth?.data?.database?.status || 'UNKNOWN'}
-                        showText
-                        showIcon
-                        size="large"
-                        animated
-                      />
-                      <Progress 
-                        percent={systemHealth?.data?.database?.responseTime ? 
-                          Math.max(0, 100 - (systemHealth.data.database.responseTime / 10)) : 0} 
-                        status={systemHealth?.data?.database?.status === 'UP' ? 'success' : 'exception'} 
-                        showInfo={false}
+              )}
+            </Col>
+          </Row>
+        </div>
+
+        {/* Statistics Cards */}
+        {canViewAllData ? (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+              <Col xs={24} sm={12} lg={6}>
+                <MetricsCard
+                  title="Total Alerts"
+                  value={stats.totalAlerts}
+                  icon={<AlertOutlined />}
+                  color="#ff4d4f"
+                  loading={overviewLoading}
+                  trend={stats.alertsGrowth !== 0 ? {
+                    value: stats.alertsGrowth,
+                    isPositive: stats.alertsGrowth < 0, // Fewer alerts is positive
+                    label: 'vs last period'
+                  } : undefined}
+                  onClick={() => router.push('/alerts/history')}
+                  tooltip="Total number of triggered alerts across all rules"
+                />
+              </Col>
+              <Col xs={24} sm={12} lg={6}>
+                <MetricsCard
+                  title="Active Rules"
+                  value={stats.activeRules}
+                  icon={<FileProtectOutlined />}
+                  color="#1677ff"
+                  loading={overviewLoading}
+                  trend={stats.rulesGrowth !== 0 ? {
+                    value: stats.rulesGrowth,
+                    isPositive: stats.rulesGrowth > 0,
+                    label: 'vs last period'
+                  } : undefined}
+                  onClick={() => router.push('/alerts/rules')}
+                  tooltip="Number of active alert rules monitoring the system"
+                />
+              </Col>
+              <Col xs={24} sm={12} lg={6}>
+                <MetricsCard
+                  title="Open Cases"
+                  value={casesStats?.data?.open || 0}
+                  icon={<ClockCircleOutlined />}
+                  color="#faad14"
+                  loading={overviewLoading}
+                  onClick={() => router.push('/cases')}
+                  tooltip="Cases that are currently open or assigned"
+                />
+              </Col>
+              <Col xs={24} sm={12} lg={6}>
+                <MetricsCard
+                  title="Active Users"
+                  value={stats.systemUsers}
+                  icon={<TeamOutlined />}
+                  color="#722ed1"
+                  loading={overviewLoading}
+                  trend={stats.usersGrowth !== 0 ? {
+                    value: stats.usersGrowth,
+                    isPositive: stats.usersGrowth > 0,
+                    label: 'vs last period'
+                  } : undefined}
+                  onClick={() => router.push('/admin/users')}
+                  tooltip="Number of active users in the system"
+                />
+              </Col>
+            </Row>
+          </motion.div>
+        ) : (
+          <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+            <Col xs={24} sm={12} lg={6}>
+              <MetricsCard
+                title="Open Cases"
+                value={myCaseStats.open}
+                icon={<ClockCircleOutlined />}
+                color="#1677ff"
+                loading={myCasesLoading}
+                onClick={() => router.push('/cases?status=OPEN,ASSIGNED')}
+                tooltip="Cases currently assigned to you"
+              />
+            </Col>
+            <Col xs={24} sm={12} lg={6}>
+              <MetricsCard
+                title="In Progress"
+                value={myCaseStats.inProgress}
+                icon={<CheckCircleOutlined />}
+                color="#722ed1"
+                loading={myCasesLoading}
+                onClick={() => router.push('/cases?status=IN_PROGRESS')}
+                tooltip="Cases you are actively working on"
+              />
+            </Col>
+            <Col xs={24} sm={12} lg={6}>
+              <MetricsCard
+                title="Resolved"
+                value={myCaseStats.resolved}
+                icon={<CheckCircleOutlined />}
+                color="#52c41a"
+                loading={myCasesLoading}
+                onClick={() => router.push('/cases?status=RESOLVED,CLOSED')}
+                tooltip="Cases you have completed"
+              />
+            </Col>
+            <Col xs={24} sm={12} lg={6}>
+              <MetricsCard
+                title="SLA Breached"
+                value={myCaseStats.slaBreached}
+                icon={<WarningOutlined />}
+                color="#ff4d4f"
+                loading={myCasesLoading}
+                onClick={() => router.push('/cases?slaBreached=true')}
+                tooltip="Cases that breached SLA"
+              />
+            </Col>
+          </Row>
+        )}
+
+        {!canViewAllData && (
+          <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+            <Col xs={24} lg={16}>
+              <Card
+                title="My Recent Cases"
+                extra={
+                  <Button type="link" size="small" onClick={() => router.push('/cases')}>
+                    View All
+                  </Button>
+                }
+                loading={myCasesLoading}
+              >
+                {myCases.length > 0 ? (
+                  <List
+                    dataSource={myCases.slice(0, 6)}
+                    renderItem={(item: any) => (
+                      <List.Item
+                        key={item.id}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => router.push(`/cases/${item.id}`)}
+                      >
+                        <List.Item.Meta
+                          title={
+                            <Space>
+                              <Text strong>{item.caseNumber}</Text>
+                              <Tag color={item.slaBreached ? 'red' : 'blue'}>
+                                {item.status}
+                              </Tag>
+                            </Space>
+                          }
+                          description={item.title}
+                        />
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          {dayjs(item.createdAt).fromNow()}
+                        </Text>
+                      </List.Item>
+                    )}
+                  />
+                ) : (
+                  <Empty description="No assigned cases yet" />
+                )}
+              </Card>
+            </Col>
+            <Col xs={24} lg={8}>
+              <Card title="My Focus" loading={myCasesLoading}>
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  <div>
+                    <Text type="secondary">SLA breaches</Text>
+                    <Title level={4} style={{ margin: 0 }}>
+                      {myCaseStats.slaBreached}
+                    </Title>
+                  </div>
+                  <Divider style={{ margin: '8px 0' }} />
+                  <div>
+                    <Text type="secondary">Open workload</Text>
+                    <Title level={4} style={{ margin: 0 }}>
+                      {myCaseStats.open + myCaseStats.inProgress}
+                    </Title>
+                  </div>
+                </Space>
+              </Card>
+            </Col>
+          </Row>
+        )}
+
+        {/* Charts Row */}
+        {canViewAllData && (
+          <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+            <Col xs={24} lg={16}>
+              <Card 
+                title="Alert Trends" 
+                extra={
+                  <Segmented 
+                    options={[
+                      { label: 'Daily', value: 'daily' },
+                      { label: 'Weekly', value: 'weekly' },
+                      { label: 'Monthly', value: 'monthly' }
+                    ]} 
+                    value={timeframe}
+                    onChange={setTimeframe}
+                  />
+                }
+                loading={trendsLoading}
+              >
+                {trendsData?.data?.alertTrends?.length > 0 ? (
+                  <Area {...areaConfig} height={300} />
+                ) : (
+                  <div style={{ 
+                    height: 300, 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    color: '#999'
+                  }}>
+                    No trend data available for selected period
+                  </div>
+                )}
+              </Card>
+            </Col>
+            <Col xs={24} lg={8}>
+              <Card title="Alert Severity Distribution" loading={overviewLoading}>
+                {overviewData?.data?.severityDistribution?.length > 0 ? (
+                  <Pie {...pieConfig} height={300} />
+                ) : (
+                  <div style={{ 
+                    height: 300, 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    color: '#999'
+                  }}>
+                    No alerts to display
+                  </div>
+                )}
+              </Card>
+            </Col>
+          </Row>
+        )}
+
+        {canViewAllData && (
+          <>
+            {/* Table and Activities */}
+            <Row gutter={[16, 16]}>
+              <Col xs={24} lg={16}>
+                <Card 
+                  title="Recent Alerts" 
+                  extra={
+                    <Space>
+                      <Button 
+                        type="text" 
                         size="small"
-                        strokeWidth={6}
+                        onClick={() => router.push('/alerts/history')}
+                      >
+                        View All
+                      </Button>
+                      <Button 
+                        type="primary" 
+                        size="small"
+                        onClick={() => router.push('/alerts/builder')}
+                      >
+                        Create Rule
+                      </Button>
+                    </Space>
+                  }
+                >
+                  <Table 
+                    columns={alertColumns} 
+                    dataSource={recentAlerts?.data?.content || []} 
+                    pagination={false}
+                    size="middle"
+                    loading={!recentAlerts}
+                    locale={{ 
+                      emptyText: 'No recent alerts' 
+                    }}
+                    rowKey="id"
+                  />
+                </Card>
+              </Col>
+              <Col xs={24} lg={8}>
+                <Card 
+                  title="Live Activity Feed"
+                  extra={
+                    <Badge 
+                      status={isConnected ? "processing" : "error"} 
+                      text={isConnected ? "Live" : "Offline"} 
+                    />
+                  }
+                >
+                  {recentActivities.length > 0 ? (
+                    <Timeline mode="left">
+                      {recentActivities.map((activity, index) => (
+                        <Timeline.Item key={index} color={activity.color} dot={activity.icon}>
+                          <div style={{ marginBottom: 12 }}>
+                            <Text strong style={{ fontSize: 13 }}>{activity.title}</Text>
+                            <br />
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              {activity.description}
+                            </Text>
+                            <br />
+                            <Text type="secondary" style={{ fontSize: 11 }}>
+                              {activity.time}
+                            </Text>
+                          </div>
+                        </Timeline.Item>
+                      ))}
+                    </Timeline>
+                  ) : (
+                    <div style={{ 
+                      textAlign: 'center', 
+                      padding: '40px 20px', 
+                      color: '#999' 
+                    }}>
+                      <ClockCircleOutlined style={{ fontSize: 24, marginBottom: 8 }} />
+                      <br />
+                      No recent activity
+                    </div>
+                  )}
+                </Card>
+              </Col>
+            </Row>
+
+            {/* System Status */}
+            <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+              <Col span={24}>
+                <Card 
+                  title="System Health Status"
+                  extra={
+                    <Space>
+                      <Badge 
+                        status={systemHealth?.data?.overallStatus === 'HEALTHY' ? 'success' : 
+                                systemHealth?.data?.overallStatus === 'DEGRADED' ? 'warning' : 'error'} 
+                        text={systemHealth?.data?.overallStatus || 'Unknown'} 
                       />
-                      <Text style={{ fontSize: 12 }}>
-                        {systemHealth?.data?.database?.responseTime && 
-                          `Response: ${systemHealth.data.database.responseTime}ms`}
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        Last check: {systemHealth?.data?.lastCheck ? 
+                          dayjs(systemHealth.data.lastCheck).fromNow() : 'Never'}
                       </Text>
                     </Space>
-                  </motion.div>
-                </Col>
-                <Col xs={24} sm={12} lg={6}>
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.2 }}
-                  >
-                    <Space direction="vertical" style={{ width: '100%', textAlign: 'center' }}>
-                      <Space align="center">
-                        <DashboardOutlined style={{ color: '#722ed1' }} />
-                        <Text type="secondary" strong>Grafana</Text>
-                      </Space>
-                      <StatusIndicator
-                        type="health"
-                        value={systemHealth?.data?.grafana?.status || 'DOWN'}
-                        showText
-                        showIcon
-                        size="large"
-                        animated
-                      />
-                      <Progress 
-                        percent={systemHealth?.data?.grafana?.responseTime ? 
-                          Math.max(0, 100 - (systemHealth.data.grafana.responseTime / 20)) : 0} 
-                        status={systemHealth?.data?.grafana?.status === 'UP' ? 'success' : 'exception'} 
-                        showInfo={false}
-                        size="small"
-                        strokeWidth={6}
-                      />
-                      <Text style={{ fontSize: 12 }}>
-                        {systemHealth?.data?.grafana?.responseTime && 
-                          `Response: ${systemHealth.data.grafana.responseTime}ms`}
-                      </Text>
-                    </Space>
-                  </motion.div>
-                </Col>
-                <Col xs={24} sm={12} lg={6}>
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.3 }}
-                  >
-                    <Space direction="vertical" style={{ width: '100%', textAlign: 'center' }}>
-                      <Space align="center">
-                        <BellOutlined style={{ color: '#52c41a' }} />
-                        <Text type="secondary" strong>WebSocket</Text>
-                      </Space>
-                      <StatusIndicator
-                        type="health"
-                        value={isConnected ? 'CONNECTED' : 'DISCONNECTED'}
-                        showText
-                        showIcon
-                        size="large"
-                        animated={!isConnected}
-                      />
-                      <Progress 
-                        percent={isConnected ? 100 : 0} 
-                        status={isConnected ? 'success' : 'exception'} 
-                        showInfo={false}
-                        size="small"
-                        strokeWidth={6}
-                      />
-                      <Text style={{ fontSize: 12 }}>
-                        Real-time updates
-                      </Text>
-                    </Space>
-                  </motion.div>
-                </Col>
-                <Col xs={24} sm={12} lg={6}>
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.4 }}
-                  >
-                    <Space direction="vertical" style={{ width: '100%', textAlign: 'center' }}>
-                      <Space align="center">
-                        <AlertOutlined style={{ color: '#ffa940' }} />
-                        <Text type="secondary" strong>Notifications</Text>
-                      </Space>
-                      <StatusIndicator
-                        type="health"
-                        value={systemHealth?.data?.notifications?.status || 'UNKNOWN'}
-                        showText
-                        showIcon
-                        size="large"
-                        animated
-                      />
-                      <Progress 
-                        percent={systemHealth?.data?.notifications?.status === 'UP' ? 100 : 0} 
-                        status={systemHealth?.data?.notifications?.status === 'UP' ? 'success' : 'exception'} 
-                        showInfo={false}
-                        size="small"
-                        strokeWidth={6}
-                      />
-                      <Text style={{ fontSize: 12 }}>
-                        Alert delivery
-                      </Text>
-                    </Space>
-                  </motion.div>
-                </Col>
-              </Row>
-            </Card>
-          </Col>
-        </Row>
+                  }
+                  loading={!systemHealth}
+                >
+                  <Row gutter={[16, 16]}>
+                    <Col xs={24} sm={12} lg={6}>
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: 0.1 }}
+                      >
+                        <Space direction="vertical" style={{ width: '100%', textAlign: 'center' }}>
+                          <Space align="center">
+                            <BarChartOutlined style={{ color: '#1677ff' }} />
+                            <Text type="secondary" strong>Database</Text>
+                          </Space>
+                          <StatusIndicator
+                            type="health"
+                            value={systemHealth?.data?.database?.status || 'UNKNOWN'}
+                            showText
+                            showIcon
+                            size="large"
+                            animated
+                          />
+                          <Progress 
+                            percent={systemHealth?.data?.database?.responseTime ? 
+                              Math.max(0, 100 - (systemHealth.data.database.responseTime / 10)) : 0} 
+                            status={systemHealth?.data?.database?.status === 'UP' ? 'success' : 'exception'} 
+                            showInfo={false}
+                            size="small"
+                            strokeWidth={6}
+                          />
+                          <Text style={{ fontSize: 12 }}>
+                            {systemHealth?.data?.database?.responseTime && 
+                              `Response: ${systemHealth.data.database.responseTime}ms`}
+                          </Text>
+                        </Space>
+                      </motion.div>
+                    </Col>
+                    <Col xs={24} sm={12} lg={6}>
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: 0.2 }}
+                      >
+                        <Space direction="vertical" style={{ width: '100%', textAlign: 'center' }}>
+                          <Space align="center">
+                            <DashboardOutlined style={{ color: '#722ed1' }} />
+                            <Text type="secondary" strong>Grafana</Text>
+                          </Space>
+                          <StatusIndicator
+                            type="health"
+                            value={systemHealth?.data?.grafana?.status || 'DOWN'}
+                            showText
+                            showIcon
+                            size="large"
+                            animated
+                          />
+                          <Progress 
+                            percent={systemHealth?.data?.grafana?.responseTime ? 
+                              Math.max(0, 100 - (systemHealth.data.grafana.responseTime / 20)) : 0} 
+                            status={systemHealth?.data?.grafana?.status === 'UP' ? 'success' : 'exception'} 
+                            showInfo={false}
+                            size="small"
+                            strokeWidth={6}
+                          />
+                          <Text style={{ fontSize: 12 }}>
+                            {systemHealth?.data?.grafana?.responseTime && 
+                              `Response: ${systemHealth.data.grafana.responseTime}ms`}
+                          </Text>
+                        </Space>
+                      </motion.div>
+                    </Col>
+                    <Col xs={24} sm={12} lg={6}>
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: 0.3 }}
+                      >
+                        <Space direction="vertical" style={{ width: '100%', textAlign: 'center' }}>
+                          <Space align="center">
+                            <BellOutlined style={{ color: '#52c41a' }} />
+                            <Text type="secondary" strong>WebSocket</Text>
+                          </Space>
+                          <StatusIndicator
+                            type="health"
+                            value={isConnected ? 'CONNECTED' : 'DISCONNECTED'}
+                            showText
+                            showIcon
+                            size="large"
+                            animated={!isConnected}
+                          />
+                          <Progress 
+                            percent={isConnected ? 100 : 0} 
+                            status={isConnected ? 'success' : 'exception'} 
+                            showInfo={false}
+                            size="small"
+                            strokeWidth={6}
+                          />
+                          <Text style={{ fontSize: 12 }}>
+                            Real-time updates
+                          </Text>
+                        </Space>
+                      </motion.div>
+                    </Col>
+                    <Col xs={24} sm={12} lg={6}>
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: 0.4 }}
+                      >
+                        <Space direction="vertical" style={{ width: '100%', textAlign: 'center' }}>
+                          <Space align="center">
+                            <AlertOutlined style={{ color: '#ffa940' }} />
+                            <Text type="secondary" strong>Notifications</Text>
+                          </Space>
+                          <StatusIndicator
+                            type="health"
+                            value={systemHealth?.data?.notifications?.status || 'UNKNOWN'}
+                            showText
+                            showIcon
+                            size="large"
+                            animated
+                          />
+                          <Progress 
+                            percent={systemHealth?.data?.notifications?.status === 'UP' ? 100 : 0} 
+                            status={systemHealth?.data?.notifications?.status === 'UP' ? 'success' : 'exception'} 
+                            showInfo={false}
+                            size="small"
+                            strokeWidth={6}
+                          />
+                          <Text style={{ fontSize: 12 }}>
+                            Alert delivery
+                          </Text>
+                        </Space>
+                      </motion.div>
+                    </Col>
+                  </Row>
+                </Card>
+              </Col>
+            </Row>
+          </>
+        )}
     </div>
   );
 }

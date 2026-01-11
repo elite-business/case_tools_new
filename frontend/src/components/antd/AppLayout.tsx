@@ -44,6 +44,8 @@ import { useWebSocketContext } from '@/components/providers/WebSocketProvider';
 import { useTheme as useCustomTheme } from '@/contexts/theme-context';
 import { canShowAdminFeatures, canShowManagerFeatures } from '@/lib/rbac';
 import dayjs from 'dayjs';
+import { useQuery } from '@tanstack/react-query';
+import { grafanaApi } from '@/lib/api-client';
 
 const { Header, Sider, Content } = Layout;
 const { Title } = Typography;
@@ -99,14 +101,46 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const showAdminFeatures = canShowAdminFeatures(userRole);
   const showManagerFeatures = canShowManagerFeatures(userRole);
 
+  const grafanaBaseUrl = process.env.NEXT_PUBLIC_GRAFANA_URL || '';
+  const { data: grafanaDashboards } = useQuery({
+    queryKey: ['grafana', 'dashboards'],
+    queryFn: () => grafanaApi.getDashboards(),
+    enabled: showManagerFeatures,
+    staleTime: 5 * 60 * 1000,
+  });
+
   // Build menu items based on user role
   const buildMenuItems = (): MenuProps['items'] => {
+    const dashboardItems = (grafanaDashboards?.data || []).map((dashboard: any) => {
+      const url = dashboard.url
+        ? dashboard.url.startsWith('http')
+          ? dashboard.url
+          : `${grafanaBaseUrl}${dashboard.url}`
+        : '';
+      return {
+        key: `grafana-${dashboard.uid || dashboard.id}`,
+        label: dashboard.title,
+        onClick: () => {
+          if (url) {
+            window.open(url, '_blank');
+          }
+        },
+      };
+    });
+
     const items: MenuProps['items'] = [
       {
-        key: '/dashboard',
+        key: 'dashboard-menu',
         icon: <DashboardOutlined />,
         label: 'Dashboard',
-        onClick: () => router.push('/dashboard'),
+        children: [
+          {
+            key: '/dashboard',
+            label: 'Main Dashboard',
+            onClick: () => router.push('/dashboard'),
+          },
+          ...dashboardItems,
+        ],
       },
       {
         key: '/cases',
@@ -124,12 +158,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
             label: 'Alert Audit Trail',
             onClick: () => router.push('/alerts/history'),
           },
-          // Alert Rules - visible to admins and managers only
-          ...(showManagerFeatures ? [{
+          {
             key: '/alerts/rules',
             label: 'Alert Rules',
             onClick: () => router.push('/alerts/rules'),
-          }] : []),
+          },
         ],
       },
       {
@@ -175,11 +208,6 @@ export default function AppLayout({ children }: AppLayoutProps) {
             key: '/admin/rule-assignments',
             label: 'Rule Assignments',
             onClick: () => router.push('/admin/rule-assignments'),
-          },
-          {
-            key: '/admin/unassigned-cases',
-            label: 'Unassigned Cases',
-            onClick: () => router.push('/admin/unassigned-cases'),
           },
           { type: 'divider' },
           {

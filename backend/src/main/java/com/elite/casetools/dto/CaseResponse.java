@@ -48,5 +48,6 @@ public class CaseResponse {
     private Long alertId;
     private String grafanaAlertId;
     private String grafanaAlertUid;
+    private String alertData;
     private Integer resolutionTimeMinutes;
 }

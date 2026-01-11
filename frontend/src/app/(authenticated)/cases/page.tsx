@@ -111,6 +111,16 @@ export default function CasesPage() {
 
   const cases = casesData?.data?.content || [];
   const stats = statsData?.data;
+  const derivedStats = {
+    total: cases.length,
+    open: cases.filter((item: Case) => item.status === 'OPEN').length,
+    inProgress: cases.filter((item: Case) => ['ASSIGNED', 'IN_PROGRESS'].includes(item.status)).length,
+    resolved: cases.filter((item: Case) => item.status === 'RESOLVED').length,
+    closed: cases.filter((item: Case) => item.status === 'CLOSED').length,
+    overdue: cases.filter((item: Case) => item.slaBreached).length,
+    breachedSla: cases.filter((item: Case) => item.slaBreached).length,
+  };
+  const displayStats = stats && stats.total > 0 ? stats : derivedStats;
 
   const handleSearch = (value: string) => {
     setFilters(prev => ({ ...prev, search: value }));
@@ -154,7 +164,8 @@ export default function CasesPage() {
         },
       }}
       extra={[
-        <Button
+        isManagerOrAdmin && (
+          <Button
           key="create"
           type="primary"
           icon={<PlusOutlined />}
@@ -162,8 +173,10 @@ export default function CasesPage() {
           disabled={!isManagerOrAdmin}
         >
           Create Case
-        </Button>,
-        <Dropdown
+        </Button>
+        ),
+        isManagerOrAdmin && (
+          <Dropdown
           key="bulk"
           disabled={!isManagerOrAdmin}
           menu={{
@@ -176,7 +189,8 @@ export default function CasesPage() {
           }}
         >
           <Button>Bulk Actions</Button>
-        </Dropdown>,
+        </Dropdown>
+        ),
         <Tooltip key="export" title="Export to CSV">
           <Button icon={<ExportOutlined />} onClick={handleExport} />
         </Tooltip>,
@@ -192,7 +206,7 @@ export default function CasesPage() {
               <Card>
                 <Statistic
                   title="Total Cases"
-                  value={stats?.total || 0}
+                  value={displayStats.total || 0}
                   prefix={<DashboardOutlined />}
                   valueStyle={{ color: '#1677ff' }}
                 />
@@ -202,7 +216,7 @@ export default function CasesPage() {
               <Card>
                 <Statistic
                   title="Open Cases"
-                  value={stats?.open || 0}
+                  value={displayStats.open || 0}
                   prefix={<BarChartOutlined />}
                   valueStyle={{ color: '#fa8c16' }}
                 />
@@ -212,7 +226,7 @@ export default function CasesPage() {
               <Card>
                 <Statistic
                   title="In Progress"
-                  value={stats?.inProgress || 0}
+                  value={displayStats.inProgress || 0}
                   prefix={<SyncOutlined spin />}
                   valueStyle={{ color: '#722ed1' }}
                 />
@@ -222,9 +236,9 @@ export default function CasesPage() {
               <Card>
                 <Statistic
                   title="SLA Breached"
-                  value={stats?.breachedSla || 0}
+                  value={displayStats.breachedSla || 0}
                   prefix={<ExclamationCircleOutlined />}
-                  valueStyle={{ color: stats?.breachedSla > 0 ? '#ff4d4f' : '#52c41a' }}
+                  valueStyle={{ color: displayStats.breachedSla > 0 ? '#ff4d4f' : '#52c41a' }}
                 />
               </Card>
             </Col>
@@ -325,6 +339,7 @@ export default function CasesPage() {
       <GroupedCaseView
         cases={cases}
         groupBy={groupBy}
+        viewMode={viewMode}
         showNestedTable={showNestedTable}
         onCaseClick={(id) => router.push(`/cases/${id}`)}
         loading={isLoading}
