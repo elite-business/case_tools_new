@@ -5,21 +5,17 @@ import { useTranslation } from 'react-i18next';
 import { useTheme as useNextTheme } from 'next-themes';
 import { useTheme } from '@/contexts/theme-context';
 import {
-  Layout,
   Input,
-  Badge,
   Dropdown,
   Avatar,
   Switch,
   Space,
-  Menu,
   Button,
   Divider,
   Typography,
   theme,
 } from 'antd';
 import {
-  BellOutlined,
   SearchOutlined,
   UserOutlined,
   LogoutOutlined,
@@ -31,8 +27,8 @@ import {
   TranslationOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
+import NotificationDropdown from '@/components/common/NotificationDropdown';
 
-const { Header: AntHeader } = Layout;
 const { Text } = Typography;
 
 export function Header() {
@@ -41,11 +37,6 @@ export function Header() {
   const { token } = theme.useToken();
   const { sidebarCollapsed, currentLanguage, setCurrentLanguage, isRTL } = useTheme();
   const [mounted, setMounted] = useState(false);
-  const [notifications] = useState([
-    { id: 1, title: 'New alert detected', description: 'Critical impact detected', time: '5 min ago', unread: true, type: 'warning' },
-    { id: 2, title: 'System update completed', description: 'All services are running normally', time: '1 hour ago', unread: true, type: 'success' },
-    { id: 3, title: 'Operations report ready', description: 'Q4 2024 report is available', time: '3 hours ago', unread: false, type: 'info' }
-  ]);
 
   useEffect(() => {
     setMounted(true);
@@ -62,8 +53,6 @@ export function Header() {
   ];
 
   const currentLang = languages.find(l => l.code === currentLanguage) || languages[0];
-  const unreadCount = notifications.filter(n => n.unread).length;
-
   const languageMenuItems: MenuProps['items'] = languages.map(lang => ({
     key: lang.code,
     label: (
@@ -74,42 +63,6 @@ export function Header() {
     ),
     onClick: () => setCurrentLanguage(lang.code),
   }));
-
-  const notificationMenuItems: MenuProps['items'] = [
-    {
-      key: 'header',
-      label: (
-        <div style={{ padding: '8px 0', borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
-          <Text strong>{t('header.notifications')}</Text>
-        </div>
-      ),
-      disabled: true,
-    },
-    ...notifications.map(notification => ({
-      key: notification.id,
-      label: (
-        <div style={{ width: 320, padding: '8px 0' }}>
-          <Space direction="vertical" size={4} style={{ width: '100%' }}>
-            <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-              <Text strong={notification.unread}>{notification.title}</Text>
-              {notification.unread && <Badge status="processing" />}
-            </Space>
-            <Text type="secondary" style={{ fontSize: 12 }}>{notification.description}</Text>
-            <Text type="secondary" style={{ fontSize: 11 }}>{notification.time}</Text>
-          </Space>
-        </div>
-      ),
-    })),
-    { type: 'divider' as const },
-    {
-      key: 'viewAll',
-      label: (
-        <div style={{ textAlign: 'center', padding: '8px 0' }}>
-          <Button type="link" size="small">View all notifications</Button>
-        </div>
-      ),
-    },
-  ];
 
   const userMenuItems: MenuProps['items'] = [
     {
@@ -218,15 +171,7 @@ export function Header() {
         </Button>
 
         {/* Notifications */}
-        <Dropdown 
-          menu={{ items: notificationMenuItems }} 
-          placement="bottomRight"
-          overlayStyle={{ minWidth: 360 }}
-        >
-          <Badge count={unreadCount} size="small">
-            <Button type="text" shape="circle" icon={<BellOutlined />} />
-          </Badge>
-        </Dropdown>
+        <NotificationDropdown />
 
         <Divider type="vertical" style={{ height: 32 }} />
 

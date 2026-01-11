@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Badge,
   Dropdown,
@@ -22,15 +22,18 @@ import {
 } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import {
-  useNotifications,
   useUnreadCount,
   useMarkAsRead,
   useMarkAllAsRead,
   useDeleteNotification,
   useRealTimeNotifications,
 } from '@/hooks/useNotifications';
+import { useQuery } from '@tanstack/react-query';
+import { notificationsApi } from '@/lib/api-client';
+import { useAuthStore } from '@/store/auth-store';
 import { Notification as NotificationInterface } from '@/lib/types';
 import NotificationItem from '@/components/notifications/NotificationItem';
+import Cookies from 'js-cookie';
 
 const { Text, Title } = Typography;
 
@@ -51,30 +54,75 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
 }) => {
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [open, setOpen] = useState(false);
+  const [items, setItems] = useState<NotificationInterface[]>([]);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const loadingMoreRef = useRef(false);
   
   const router = useRouter();
   const { token } = theme.useToken();
+  const { isAuthenticated } = useAuthStore();
+  const hasToken = !!Cookies.get('token');
 
   // Queries and mutations
-  const { data: notificationsResponse, isLoading } = useNotifications({ 
-    size: maxCount,
-    page: 0,
-    status: filter === 'unread' ? 'PENDING' : undefined 
+  const { data: notificationsResponse, isLoading, refetch } = useQuery({
+    queryKey: ['notifications', 'dropdown', filter, page],
+    queryFn: () => notificationsApi.getNotifications({
+      size: maxCount,
+      page,
+      //status: filter === 'unread' ? 'PENDING' : undefined,
+    }),
+    enabled: isAuthenticated || hasToken,
+    staleTime: 60 * 1000,
   });
   const { data: unreadCountResponse } = useUnreadCount();
   const markAsReadMutation = useMarkAsRead();
   const markAllAsReadMutation = useMarkAllAsRead();
   const deleteMutation = useDeleteNotification();
 
-  // Real-time updates
+  // Real-time updates (no API invalidation to avoid repeat calls)
   useRealTimeNotifications((notification) => {
-    // Optional: Handle new notifications here
-    console.log('New notification:', notification);
-  });
+    setItems((prev) => [
+      {
+        id: Number(notification.id),
+        userId: 0,
+        type: notification.type.toUpperCase() as any,
+        title: notification.title,
+        message: notification.message,
+        severity: notification.severity.toUpperCase() as any,
+        status: 'SENT',
+        data: notification.data,
+        createdAt: notification.timestamp?.toISOString(),
+        updatedAt: notification.timestamp?.toISOString(),
+      },
+      ...prev,
+    ].slice(0, 50) as any);
+  }, { invalidateQueries: false });
 
-  const notifications = notificationsResponse?.data?.content || [];
   const unreadCount = unreadCountResponse?.data?.count || 0;
-  const filteredNotifications = notifications.slice(0, maxCount);
+  const filteredNotifications = items.slice(0, maxCount);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    if (!notificationsResponse?.data) return;
+    const next = notificationsResponse.data.content || [];
+
+    setItems((prev) => {
+      if (page === 0) return next;
+      const existingIds = new Set(prev.map((item) => item.id));
+      const merged = [...prev, ...next.filter((item:any) => !existingIds.has(item.id))];
+      return merged;
+    });
+    setHasMore(!notificationsResponse.data.last);
+    loadingMoreRef.current = false;
+  }, [notificationsResponse, page, isAuthenticated]);
+
+  useEffect(() => {
+    setPage(0);
+    setItems([]);
+    setHasMore(true);
+    loadingMoreRef.current = false;
+  }, [filter]);
 
   // Event handlers
   const handleNotificationClick = (notification: NotificationInterface) => {
@@ -174,7 +222,7 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
             size="small"
             onClick={() => setFilter('all')}
           >
-            All ({notifications.length})
+            All ({items.length})
           </Button>
           <Button
             type={filter === 'unread' ? 'primary' : 'text'}
@@ -187,7 +235,17 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
       </div>
 
       {/* Notification list */}
-      <div style={{ maxHeight: 350, overflowY: 'auto' }}>
+      <div
+        style={{ maxHeight: 350, overflowY: 'auto' }}
+        onScroll={(event) => {
+          const target = event.currentTarget;
+          const nearBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 40;
+          if (nearBottom && hasMore && !isLoading && !loadingMoreRef.current) {
+            loadingMoreRef.current = true;
+            setPage((prevPage) => prevPage + 1);
+          }
+        }}
+      >
         {isLoading ? (
           <div style={{ padding: 24, textAlign: 'center' }}>
             <Spin tip="Loading notifications..." />
@@ -246,7 +304,12 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
   return (
     <Dropdown
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (nextOpen && (isAuthenticated || hasToken)) {
+          refetch();
+        }
+      }}
       dropdownRender={() => dropdownContent}
       placement={placement}
       trigger={['click']}

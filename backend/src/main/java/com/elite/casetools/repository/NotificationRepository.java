@@ -121,20 +121,32 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     /**
      * Find notifications for user with optional filters
      */
-    @Query("""
-            SELECT n FROM Notification n
-            WHERE n.recipientUser = :user
+    @Query(
+            value = """
+            SELECT n.* FROM casemanagement.notification n
+            WHERE n.recipient_user_id = :userId
             AND (:unreadOnly IS NULL OR (:unreadOnly = true AND n.status <> 'READ'))
-            AND (:type IS NULL OR n.notificationType = :type)
+            AND (:type IS NULL OR n.notification_type = :type)
             AND (:search IS NULL
-                OR lower(coalesce(n.subject, '')) LIKE lower(concat('%', :search, '%'))
+                OR lower(n.subject) LIKE lower(concat('%', :search, '%'))
                 OR lower(n.message) LIKE lower(concat('%', :search, '%')))
-            ORDER BY n.createdAt DESC
-            """)
+            ORDER BY n.created_at DESC
+            """,
+            countQuery = """
+            SELECT count(*) FROM casemanagement.notification n
+            WHERE n.recipient_user_id = :userId
+            AND (:unreadOnly IS NULL OR (:unreadOnly = true AND n.status <> 'READ'))
+            AND (:type IS NULL OR n.notification_type = :type)
+            AND (:search IS NULL
+                OR lower(n.subject) LIKE lower(concat('%', :search, '%'))
+                OR lower(n.message) LIKE lower(concat('%', :search, '%')))
+            """,
+            nativeQuery = true
+    )
     Page<Notification> findUserNotifications(
-            @Param("user") User user,
+            @Param("userId") Long userId,
             @Param("unreadOnly") Boolean unreadOnly,
-            @Param("type") Notification.NotificationType type,
+            @Param("type") String type,
             @Param("search") String search,
             Pageable pageable);
 

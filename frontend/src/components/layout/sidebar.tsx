@@ -70,13 +70,20 @@ export function Sidebar() {
     }
 
     const dashboards = grafanaDashboards?.data || [];
-    return [
-      {
-        key: '/dashboard',
-        icon: <DashboardOutlined />,
-        label: <Link href="/dashboard">{t('nav.dashboard') || 'Dashboard'}</Link>,
-      },
-      ...dashboards.map((dashboard: any) => {
+    const folderMap = new Map<string, any[]>();
+    dashboards.forEach((dashboard: any) => {
+      const folderName = dashboard.folderTitle || 'Other Dashboards';
+      if (!folderMap.has(folderName)) {
+        folderMap.set(folderName, []);
+      }
+      folderMap.get(folderName)?.push(dashboard);
+    });
+
+    const folderItems = Array.from(folderMap.entries()).map(([folderName, items]) => ({
+      key: `grafana-folder-${folderName.replace(/\s+/g, '-').toLowerCase()}`,
+      icon: <BarChartOutlined />,
+      label: folderName,
+      children: items.map((dashboard: any) => {
         const url = dashboard.url
           ? dashboard.url.startsWith('http')
             ? dashboard.url
@@ -92,6 +99,15 @@ export function Sidebar() {
           ),
         };
       }),
+    }));
+
+    return [
+      {
+        key: '/dashboard',
+        icon: <DashboardOutlined />,
+        label: <Link href="/dashboard">{t('nav.dashboard') || 'Dashboard'}</Link>,
+      },
+      ...folderItems,
     ];
   }, [canViewGrafanaDashboards, grafanaDashboards, grafanaBaseUrl, t]);
 

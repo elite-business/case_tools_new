@@ -33,7 +33,7 @@ public class TeamController {
      * Get all teams with pagination
      */
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER','ANALYST','VIEWER')")
     @Operation(summary = "Get all teams with pagination")
     public ResponseEntity<Page<TeamResponse>> getAllTeams(
             @PageableDefault(size = 20, sort = "name", direction = Sort.Direction.ASC) Pageable pageable,

@@ -75,11 +75,11 @@ public class NotificationsController {
                 }
             }
 
-            PageRequest pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+            PageRequest pageable = PageRequest.of(page, size);
             Page<Notification> notifications = notificationRepository.findUserNotifications(
-                    currentUser,
+                    currentUser.getId(),
                     resolvedUnreadOnly,
-                    notificationType,
+                    notificationType != null ? notificationType.name() : null,
                     search,
                     pageable
             );

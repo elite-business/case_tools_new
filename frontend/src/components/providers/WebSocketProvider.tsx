@@ -65,7 +65,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
       setNotifications([]);
       setUnreadCount(0);
       
-      const token = Cookies.get('token');
+      const token = Cookies.get('token') || localStorage.getItem('token');
       if (token) {
         // Fetch user's team memberships
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/me/teams`, {
@@ -75,18 +75,20 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
         })
         .then(res => res.json())
         .then(teamIds => {
+          const roles = user.roles || (user.role ? [user.role] : []);
           // Connect to WebSocket with user roles and team IDs
           webSocketService.connect(
             user.id.toString(), 
             token, 
-            user.roles,
+            roles,
             teamIds.map((id: number) => id.toString())
           );
         })
         .catch(err => {
           console.warn('Failed to fetch user teams, connecting without team channels:', err);
+          const roles = user.roles || (user.role ? [user.role] : []);
           // Connect without teams if fetch fails
-          webSocketService.connect(user.id.toString(), token, user.roles, []);
+          webSocketService.connect(user.id.toString(), token, roles, []);
         });
         
         // Request notification permission
@@ -107,6 +109,10 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
           handleNewNotification(notification);
         });
 
+        const unsubscribeSystem = webSocketService.subscribe('system', (notification) => {
+          handleNewNotification(notification);
+        });
+
         // Check connection status
         const checkConnection = setInterval(() => {
           setIsConnected(webSocketService.isConnected());
@@ -118,6 +124,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
           unsubscribeAlert();
           unsubscribeCaseUpdate();
           unsubscribeAssignment();
+          unsubscribeSystem();
           clearInterval(checkConnection);
           webSocketService.disconnect();
         };

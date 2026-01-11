@@ -363,6 +363,10 @@ public class NotificationService {
         
         // Send WebSocket notification ONLY to admin channel (single notification)
         webSocketService.sendToChannel("admin", "admin.unassigned-case", notification);
+
+        // Persist for admins and managers so it appears in notification history
+        notifyRoleUsers(User.UserRole.ADMIN, caseEntity, subject, "CASE_CREATED");
+        notifyRoleUsers(User.UserRole.MANAGER, caseEntity, subject, "CASE_CREATED");
         
         log.info("Sent unassigned case notification to admins only for case: {}", caseEntity.getCaseNumber());
     }
@@ -407,6 +411,57 @@ public class NotificationService {
             log.info("Successfully sent {} notification to user: {}", notificationType, user.getLogin());
         } catch (Exception e) {
             log.error("Failed to send notification to user {}: {}", user.getLogin(), e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Send case notification and persist with case context
+     */
+    @Async
+    public void sendCaseNotification(User user, Case caseEntity, String subject, String message, String notificationType,
+                                     Map<String, Object> metadata) {
+        if (user == null) {
+            log.warn("Cannot send case notification - user is null");
+            return;
+        }
+
+        try {
+            if (emailEnabled && user.getEmail() != null && mailSender != null) {
+                sendSimpleEmail(user.getEmail(), subject, message);
+            }
+
+            Map<String, Object> mergedMetadata = new HashMap<>();
+            if (metadata != null) {
+                mergedMetadata.putAll(metadata);
+            }
+            if (caseEntity != null) {
+                mergedMetadata.putIfAbsent("caseId", caseEntity.getId());
+                mergedMetadata.putIfAbsent("caseNumber", caseEntity.getCaseNumber());
+            }
+
+            persistInAppNotification(
+                    user,
+                    caseEntity,
+                    mapNotificationType(notificationType),
+                    subject,
+                    message,
+                    mergedMetadata
+            );
+
+            Map<String, Object> notificationData = new HashMap<>();
+            notificationData.put("type", notificationType);
+            notificationData.put("subject", subject);
+            notificationData.put("message", message);
+            notificationData.put("timestamp", System.currentTimeMillis());
+            if (caseEntity != null) {
+                notificationData.put("caseId", caseEntity.getId());
+                notificationData.put("caseNumber", caseEntity.getCaseNumber());
+            }
+            notificationData.put("data", mergedMetadata);
+
+            webSocketService.sendToUser(user.getId(), "notification", notificationData);
+        } catch (Exception e) {
+            log.error("Failed to send case notification to user {}: {}", user.getLogin(), e.getMessage(), e);
         }
     }
 

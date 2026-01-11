@@ -228,21 +228,35 @@ const Sidebar: React.FC<SidebarProps> = ({
       return undefined;
     }
     const dashboards = grafanaDashboards?.data || [];
-    const grafanaItems = dashboards.map((dashboard: any) => ({
-      key: `grafana-${dashboard.uid || dashboard.id}`,
-      label: dashboard.title,
+    const folderMap = new Map<string, any[]>();
+    dashboards.forEach((dashboard: any) => {
+      const folderName = dashboard.folderTitle || 'Other Dashboards';
+      if (!folderMap.has(folderName)) {
+        folderMap.set(folderName, []);
+      }
+      folderMap.get(folderName)?.push(dashboard);
+    });
+
+    const folderItems = Array.from(folderMap.entries()).map(([folderName, items]) => ({
+      key: `grafana-folder-${folderName.replace(/\s+/g, '-').toLowerCase()}`,
+      label: folderName,
       icon: <BarChartOutlined />,
-      path: dashboard.url || '',
-      onClick: () => {
-        const url = dashboard.url
-          ? dashboard.url.startsWith('http')
-            ? dashboard.url
-            : `${grafanaBaseUrl}${dashboard.url}`
-          : '';
-        if (url) {
-          window.open(url, '_blank');
-        }
-      },
+      children: items.map((dashboard: any) => ({
+        key: `grafana-${dashboard.uid || dashboard.id}`,
+        label: dashboard.title,
+        icon: <BarChartOutlined />,
+        path: dashboard.url || '',
+        onClick: () => {
+          const url = dashboard.url
+            ? dashboard.url.startsWith('http')
+              ? dashboard.url
+              : `${grafanaBaseUrl}${dashboard.url}`
+            : '';
+          if (url) {
+            window.open(url, '_blank');
+          }
+        },
+      })),
     }));
 
     return [
@@ -252,7 +266,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         icon: <DashboardOutlined />,
         path: '/dashboard',
       },
-      ...grafanaItems,
+      ...folderItems,
     ];
   }, [canViewGrafanaDashboards, grafanaDashboards, grafanaBaseUrl]);
 

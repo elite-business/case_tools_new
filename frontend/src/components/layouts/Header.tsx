@@ -305,7 +305,7 @@ const Header: React.FC<HeaderProps> = ({
               <ThemeSwitcher type="icon" />
 
               {/* Language switcher */}
-              <LanguageSwitcher type="flag" />
+              {/* <LanguageSwitcher type="flag" /> */}
 
               {/* Notifications */}
               <NotificationDropdown />
@@ -400,7 +400,7 @@ const Header: React.FC<HeaderProps> = ({
       )}
 
       {/* Global search shortcut */}
-      <GlobalSearchShortcut />
+      {/* <GlobalSearchShortcut /> */}
     </>
   );
 };

@@ -268,11 +268,17 @@ public class ImprovedWebhookService {
                     // Notify assigned users
                     for (Long userId : assignmentInfo.getUserIds()) {
                         userRepository.findById(userId).ifPresent(user -> 
-                            notificationService.sendNotification(
+                            notificationService.sendCaseNotification(
                                     user,
+                                    caseEntity,
                                     "Case Reopened",
                                     "Case " + caseEntity.getCaseNumber() + " has been reopened due to a new alert",
-                                    "CASE_REOPENED"
+                                    "CASE_REOPENED",
+                                    Map.of(
+                                            "caseId", caseEntity.getId(),
+                                            "caseNumber", caseEntity.getCaseNumber(),
+                                            "severity", caseEntity.getSeverity().toString()
+                                    )
                             )
                         );
                     }
@@ -339,15 +345,17 @@ public class ImprovedWebhookService {
                     User user = userRepository.findById(userId).orElse(null);
                     if (user != null) {
                         // Send targeted notification to assigned user (includes WebSocket)
-                        notificationService.sendNotification(
+                        notificationService.sendCaseNotification(
                                 user,
+                                caseEntity,
                                 "New Case Assigned: " + caseEntity.getCaseNumber(),
                                 String.format("Case %s has been assigned to you from rule: %s\nSeverity: %s\nTitle: %s", 
                                         caseEntity.getCaseNumber(), 
                                         ruleAssignment != null ? ruleAssignment.getGrafanaRuleName() : "No Rule",
                                         caseEntity.getSeverity(),
                                         caseEntity.getTitle()),
-                                "CASE_ASSIGNED"
+                                "CASE_ASSIGNED",
+                                notificationData
                         );
                         
                         // NOTE: WebSocket notification is already sent by notificationService.sendNotification()
@@ -370,8 +378,9 @@ public class ImprovedWebhookService {
                             }
                             
                             // Send team notification (includes WebSocket)
-                            notificationService.sendNotification(
+                            notificationService.sendCaseNotification(
                                     member,
+                                    caseEntity,
                                     "New Team Case: " + caseEntity.getCaseNumber(),
                                     String.format("Case %s created for your team (%s)\nRule: %s\nSeverity: %s\nTitle: %s",
                                             caseEntity.getCaseNumber(), 
@@ -379,7 +388,8 @@ public class ImprovedWebhookService {
                                             ruleAssignment != null ? ruleAssignment.getGrafanaRuleName() : "No Rule",
                                             caseEntity.getSeverity(),
                                             caseEntity.getTitle()),
-                                    "TEAM_CASE_CREATED"
+                                    "TEAM_CASE_CREATED",
+                                    notificationData
                             );
                             
                             // NOTE: WebSocket notification is already sent by notificationService.sendNotification()

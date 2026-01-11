@@ -26,7 +26,6 @@ import {
   FileProtectOutlined,
   BarChartOutlined,
   SettingOutlined,
-  BellOutlined,
   SearchOutlined,
   UserOutlined,
   LogoutOutlined,
@@ -34,7 +33,6 @@ import {
   TranslationOutlined,
   WifiOutlined,
   DisconnectOutlined,
-  ClearOutlined,
 } from '@ant-design/icons';
 import { useRouter, usePathname } from 'next/navigation';
 import ThemeSwitcher from '@/components/common/ThemeSwitcher';
@@ -43,9 +41,9 @@ import { useAuthStore } from '@/store/auth-store';
 import { useWebSocketContext } from '@/components/providers/WebSocketProvider';
 import { useTheme as useCustomTheme } from '@/contexts/theme-context';
 import { canShowAdminFeatures, canShowManagerFeatures } from '@/lib/rbac';
-import dayjs from 'dayjs';
 import { useQuery } from '@tanstack/react-query';
 import { grafanaApi } from '@/lib/api-client';
+import NotificationDropdown from '@/components/common/NotificationDropdown';
 
 const { Header, Sider, Content } = Layout;
 const { Title } = Typography;
@@ -57,7 +55,6 @@ interface AppLayoutProps {
 export default function AppLayout({ children }: AppLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileCollapsed, setMobileCollapsed] = useState(true);
-  const [notificationDrawerOpen, setNotificationDrawerOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
@@ -82,13 +79,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const { currentLanguage, setCurrentLanguage } = useCustomTheme();
   
   // WebSocket notifications
-  const { 
-    notifications, 
-    unreadCount, 
-    isConnected, 
-    markAsRead, 
-    clearNotifications 
-  } = useWebSocketContext();
+  const { isConnected } = useWebSocketContext();
 
   // Handle logout
   const handleLogout = () => {
@@ -111,22 +102,35 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
   // Build menu items based on user role
   const buildMenuItems = (): MenuProps['items'] => {
-    const dashboardItems = (grafanaDashboards?.data || []).map((dashboard: any) => {
-      const url = dashboard.url
-        ? dashboard.url.startsWith('http')
-          ? dashboard.url
-          : `${grafanaBaseUrl}${dashboard.url}`
-        : '';
-      return {
-        key: `grafana-${dashboard.uid || dashboard.id}`,
-        label: dashboard.title,
-        onClick: () => {
-          if (url) {
-            window.open(url, '_blank');
-          }
-        },
-      };
+    const folderMap = new Map<string, any[]>();
+    (grafanaDashboards?.data || []).forEach((dashboard: any) => {
+      const folderName = dashboard.folderTitle || 'Other Dashboards';
+      if (!folderMap.has(folderName)) {
+        folderMap.set(folderName, []);
+      }
+      folderMap.get(folderName)?.push(dashboard);
     });
+
+    const dashboardItems = Array.from(folderMap.entries()).map(([folderName, items]) => ({
+      key: `grafana-folder-${folderName.replace(/\s+/g, '-').toLowerCase()}`,
+      label: folderName,
+      children: items.map((dashboard: any) => {
+        const url = dashboard.url
+          ? dashboard.url.startsWith('http')
+            ? dashboard.url
+            : `${grafanaBaseUrl}${dashboard.url}`
+          : '';
+        return {
+          key: `grafana-${dashboard.uid || dashboard.id}`,
+          label: dashboard.title,
+          onClick: () => {
+            if (url) {
+              window.open(url, '_blank');
+            }
+          },
+        };
+      }),
+    }));
 
     const items: MenuProps['items'] = [
       {
@@ -277,38 +281,6 @@ export default function AppLayout({ children }: AppLayoutProps) {
       onClick: () => setCurrentLanguage('ar'),
     },
   ];
-
-  // Handle notification click
-  const handleNotificationClick = (notification: any) => {
-    markAsRead(notification.id);
-    // Navigate based on notification type
-    switch (notification.type) {
-      case 'alert':
-        router.push(`/alerts/history?alertId=${notification.entityId}`);
-        break;
-      case 'case_update':
-        router.push(`/cases/${notification.entityId}`);
-        break;
-      case 'assignment':
-        router.push(`/cases/${notification.entityId}`);
-        break;
-      default:
-        router.push('/dashboard');
-    }
-    setNotificationDrawerOpen(false);
-  };
-
-  // Get severity color for notifications
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case 'CRITICAL': return '#ff4d4f';
-      case 'HIGH': return '#ffa940';
-      case 'MEDIUM': return '#fadb14';
-      case 'LOW': return '#52c41a';
-      default: return '#1890ff';
-    }
-  };
-
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -466,14 +438,14 @@ export default function AppLayout({ children }: AppLayoutProps) {
               }
             )}
             
-            {!isMobile && (
+            {/* {!isMobile && (
               <Input
                 prefix={<SearchOutlined />}
                 placeholder="Search..."
                 style={{ width: 300, marginLeft: 16 }}
                 allowClear
               />
-            )}
+            )} */}
           </Space>
 
           <Space align="center" size="middle" style={{ marginRight: 24 }}>
@@ -500,16 +472,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
             </Dropdown>
 
             {/* Notifications */}
-            <Tooltip title="Notifications">
-              <Badge count={unreadCount} size="small">
-                <Button 
-                  type="text" 
-                  shape="circle" 
-                  icon={<BellOutlined />}
-                  onClick={() => setNotificationDrawerOpen(true)}
-                />
-              </Badge>
-            </Tooltip>
+            <NotificationDropdown />
 
             {/* User Menu */}
             <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
@@ -531,119 +494,6 @@ export default function AppLayout({ children }: AppLayoutProps) {
         </Content>
       </Layout>
 
-      {/* Notifications Drawer */}
-      <Drawer
-        title={
-          <Space>
-            <BellOutlined />
-            Notifications
-            {unreadCount > 0 && <Badge count={unreadCount} size="small" />}
-          </Space>
-        }
-        placement="right"
-        onClose={() => setNotificationDrawerOpen(false)}
-        open={notificationDrawerOpen}
-        width={400}
-        extra={
-          <Space>
-            <Button 
-              type="text" 
-              size="small"
-              icon={<ClearOutlined />}
-              onClick={clearNotifications}
-              disabled={notifications.length === 0}
-            >
-              Clear All
-            </Button>
-          </Space>
-        }
-      >
-        {!isConnected && (
-          <Alert
-            message="Connection Lost"
-            description="Real-time notifications are disabled"
-            type="warning"
-            showIcon
-            style={{ marginBottom: 16 }}
-          />
-        )}
-
-        {notifications.length > 0 ? (
-          <List
-            dataSource={notifications}
-            renderItem={(notification) => (
-              <List.Item
-                style={{ 
-                  cursor: 'pointer',
-                  backgroundColor: notification.read ? 'transparent' : '#f6f8fa',
-                  padding: '12px',
-                  border: '1px solid #f0f0f0',
-                  borderRadius: '6px',
-                  marginBottom: '8px',
-                }}
-                onClick={() => handleNotificationClick(notification)}
-              >
-                <List.Item.Meta
-                  avatar={
-                    <Badge 
-                      dot={!notification.read}
-                      color={getSeverityColor(notification.severity)}
-                    >
-                      <Avatar 
-                        style={{ 
-                          backgroundColor: getSeverityColor(notification.severity),
-                          fontSize: 12 
-                        }}
-                        size={40}
-                        icon={
-                          notification.type === 'alert' ? <AlertOutlined /> :
-                          notification.type === 'case_update' ? <FileProtectOutlined /> :
-                          notification.type === 'assignment' ? <UserOutlined /> :
-                          <BellOutlined />
-                        }
-                      />
-                    </Badge>
-                  }
-                  title={
-                    <Space direction="vertical" size={0} style={{ width: '100%' }}>
-                      <div style={{ 
-                        fontWeight: notification.read ? 'normal' : 'bold',
-                        fontSize: 14 
-                      }}>
-                        {notification.title}
-                      </div>
-                      <div style={{ 
-                        fontSize: 12, 
-                        color: '#666',
-                        lineHeight: '1.4'
-                      }}>
-                        {notification.message}
-                      </div>
-                    </Space>
-                  }
-                  description={
-                    <Space>
-                      <Tag 
-                        color={getSeverityColor(notification.severity)}
-                      >
-                        {notification.severity}
-                      </Tag>
-                      <span style={{ fontSize: 11, color: '#999' }}>
-                        {dayjs(notification.timestamp).fromNow()}
-                      </span>
-                    </Space>
-                  }
-                />
-              </List.Item>
-            )}
-          />
-        ) : (
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="No notifications"
-          />
-        )}
-      </Drawer>
     </Layout>
   );
 }

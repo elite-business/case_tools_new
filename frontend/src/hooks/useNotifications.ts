@@ -196,12 +196,16 @@ export function useUpdateNotificationPreferences() {
 }
 
 // Enhanced real-time notifications hook with desktop support
-export function useRealTimeNotifications(onNotification?: (notification: WebSocketNotification) => void) {
+export function useRealTimeNotifications(
+  onNotification?: (notification: WebSocketNotification) => void,
+  options?: { invalidateQueries?: boolean }
+) {
   const { user, isAuthenticated } = useAuthStore();
   const queryClient = useQueryClient();
   const audioContextRef = useRef<AudioContext | null>(null);
   const { data: preferences } = useNotificationPreferences();
   const [isConnected, setIsConnected] = useState(false);
+  const shouldInvalidate = options?.invalidateQueries !== false;
 
   // Request desktop notification permission on mount
   useEffect(() => {
@@ -288,8 +292,10 @@ export function useRealTimeNotifications(onNotification?: (notification: WebSock
 
   const handleWebSocketNotification = useCallback((notificationData: WebSocketNotification) => {
     // Invalidate queries to refresh UI from persisted notifications
-    queryClient.invalidateQueries({ queryKey: ['notifications'] });
-    queryClient.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });
+    if (shouldInvalidate) {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });
+    }
 
     // Check if should show notification
     if (!shouldShowNotification(notificationData)) {
@@ -352,7 +358,7 @@ export function useRealTimeNotifications(onNotification?: (notification: WebSock
 
     // Call custom handler
     onNotification?.(notificationData);
-  }, [queryClient, shouldShowNotification, playNotificationSound, preferences, onNotification]);
+  }, [queryClient, shouldInvalidate, shouldShowNotification, playNotificationSound, preferences, onNotification]);
 
   // WebSocket connection management
   useEffect(() => {
