@@ -106,7 +106,7 @@ export default function RuleAssignmentsPage() {
   // Mutations
   const syncMutation = useMutation({
     mutationFn: () => ruleAssignmentsApi.syncFromGrafana(),
-    onSuccess: (data) => {
+    onSuccess: (data:any) => {
       message.success(`Synced ${data.synced} rules from Grafana`);
       queryClient.invalidateQueries({ queryKey: ['rule-assignments'] });
       queryClient.invalidateQueries({ queryKey: ['rule-assignment-stats'] });
@@ -145,8 +145,8 @@ export default function RuleAssignmentsPage() {
   });
 
   const toggleStatusMutation = useMutation({
-    mutationFn: ({ uid, active }: { uid: string; active: boolean }) =>
-      ruleAssignmentsApi.toggleRuleStatus(uid, active),
+    // mutationFn: ({ uid, active }: { uid: string; active: boolean }) =>
+    //   ruleAssignmentsApi.toggleRuleStatus(uid, active),
     onSuccess: () => {
       message.success('Rule status updated');
       queryClient.invalidateQueries({ queryKey: ['rule-assignments'] });
