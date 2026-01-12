@@ -168,6 +168,7 @@ export const usersApi = {
   search: (query: string) => apiClient.get('/users/search', { params: { query } }),
   getAvailableForAssignment: () => apiClient.get('/users/available-for-assignment'),
   getActiveUsers: () => apiClient.get('/users/list/active'),
+  getUserActivity: (id: number, params?: any) => apiClient.get(`/users/${id}/activity`, { params }),
   resetPassword: (id: number, newPassword: string) => 
     apiClient.post(`/users/${id}/reset-password`, { newPassword }),
 };
@@ -361,6 +362,8 @@ export const ruleAssignmentApi = {
     apiClient.post(`/rule-assignments/grafana-rule/${grafanaUid}/assign`, data),
   removeAssignments: (grafanaUid: string, data: any) => 
     apiClient.delete(`/rule-assignments/grafana-rule/${grafanaUid}/assign`, { data }),
+  toggleRuleStatus: (uid: string, active: boolean) =>
+    apiClient.patch(`/rule-assignments/grafana-rule/${uid}/status`, { active }),
   getMyAssignments: () => apiClient.get('/rule-assignments/my-assignments'),
   syncFromGrafana: () => apiClient.post('/rule-assignments/sync-from-grafana'),
   getStatistics: () => apiClient.get('/rule-assignments/statistics'),

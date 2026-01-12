@@ -232,7 +232,7 @@ export default function TeamsPage() {
     {
       title: 'Team',
       key: 'team',
-      render: (_, record: Team) => (
+      render: (_: any, record: Team) => (
         <div>
           <div className="font-medium">{record.name}</div>
           <div className="text-sm text-gray-500">{record.description || 'No description'}</div>
@@ -242,7 +242,7 @@ export default function TeamsPage() {
     {
       title: 'Team Lead',
       key: 'lead',
-      render: (_, record: Team) => {
+      render: (_: any, record: Team) => {
         if (!record.lead) {
           return <span className="text-gray-400">No lead assigned</span>;
         }
@@ -260,7 +260,7 @@ export default function TeamsPage() {
     {
       title: 'Members',
       key: 'members',
-      render: (_, record: Team) => (
+      render: (_: any, record: Team) => (
         <div>
           <div className="text-sm font-medium">{record.members?.length || 0} members</div>
           <Avatar.Group size="small" maxCount={4}>
@@ -282,7 +282,7 @@ export default function TeamsPage() {
     {
       title: 'Performance',
       key: 'performance',
-      render: (_, record: Team) => {
+      render: (_: any, record: Team) => {
         const performance = record.performance;
         if (!performance) {
           return <span className="text-gray-400">No data</span>;
@@ -321,7 +321,7 @@ export default function TeamsPage() {
     {
       title: 'Actions',
       key: 'actions',
-      render: (_, record: Team) => (
+      render: (_: any, record: Team) => (
         <Space>
           <Button
             type="link"
@@ -369,8 +369,8 @@ export default function TeamsPage() {
 
   // Calculate statistics
   const totalTeams = teams.length;
-  const activeTeams = teams.filter(team => team.isActive).length;
-  const totalMembers = teams.reduce((sum, team) => sum + (team.members?.length || 0), 0);
+  const activeTeams = teams.filter((team: any) => team.isActive).length;
+  const totalMembers = teams.reduce((sum: number, team: any) => sum + (team.members?.length || 0), 0);
   const avgTeamSize = totalTeams > 0 ? Math.round(totalMembers / totalTeams) : 0;
 
   return (
@@ -657,7 +657,7 @@ export default function TeamsPage() {
           >
             <Select placeholder="Select user to add">
               {availableUsers
-                .filter(user => !(selectedTeam?.members || []).some(member => member.id === user.id))
+                .filter((user: any) => !(selectedTeam?.members || []).some((member: any) => member.id === user.id))
                 .map((user: User) => (
                 <Option key={user.id} value={user.id}>
                   {user.fullName} (@{user.username})

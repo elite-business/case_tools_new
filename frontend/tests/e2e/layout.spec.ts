@@ -63,21 +63,21 @@ test.describe('Layout and Navigation', () => {
     
     // Get initial sidebar width
     const sidebar = page.locator('.ant-layout-sider');
-    const initialWidth = await sidebar.evaluate(el => el.offsetWidth);
+    const initialWidth = await sidebar.evaluate(el => (el as HTMLElement).offsetWidth);
     
     // Click to toggle
     await collapseButton.click();
     await page.waitForTimeout(300); // Wait for animation
     
     // Check width changed
-    const newWidth = await sidebar.evaluate(el => el.offsetWidth);
+    const newWidth = await sidebar.evaluate(el => (el as HTMLElement).offsetWidth);
     expect(newWidth).not.toBe(initialWidth);
     
     // Toggle back
     await collapseButton.click();
     await page.waitForTimeout(300);
     
-    const finalWidth = await sidebar.evaluate(el => el.offsetWidth);
+    const finalWidth = await sidebar.evaluate(el => (el as HTMLElement).offsetWidth);
     expect(finalWidth).toBe(initialWidth);
   });
 

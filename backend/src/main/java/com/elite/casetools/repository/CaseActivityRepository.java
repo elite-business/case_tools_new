@@ -3,6 +3,8 @@ package com.elite.casetools.repository;
 import com.elite.casetools.entity.Case;
 import com.elite.casetools.entity.CaseActivity;
 import com.elite.casetools.entity.User;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -39,6 +41,11 @@ public interface CaseActivityRepository extends JpaRepository<CaseActivity, Long
      * Find activities performed by a specific user
      */
     List<CaseActivity> findByPerformedBy(User user);
+
+    /**
+     * Find activities performed by a specific user ordered by performed date
+     */
+    Page<CaseActivity> findByPerformedByOrderByPerformedAtDesc(User user, Pageable pageable);
 
     /**
      * Find activities within a date range

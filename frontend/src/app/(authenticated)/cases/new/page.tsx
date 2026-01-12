@@ -43,10 +43,10 @@ const severityColors: Record<CaseSeverity, string> = {
 };
 
 const priorityColors: Record<CasePriority, string> = {
-  URGENT: '#ff4d4f',
-  HIGH: '#ffa940',
-  MEDIUM: '#fadb14',
-  LOW: '#52c41a',
+  1: '#ff4d4f',
+  2: '#ffa940',
+  3: '#fadb14',
+  4: '#52c41a',
 };
 
 const severityDescriptions: Record<CaseSeverity, string> = {
@@ -57,10 +57,10 @@ const severityDescriptions: Record<CaseSeverity, string> = {
 };
 
 const priorityDescriptions: Record<CasePriority, string> = {
-  URGENT: 'Requires immediate attention',
-  HIGH: 'Should be addressed soon',
-  MEDIUM: 'Normal priority',
-  LOW: 'Can be addressed when resources allow',
+  1: 'Requires immediate attention',
+  2: 'Should be addressed soon',
+  3: 'Normal priority',
+  4: 'Can be addressed when resources allow',
 };
 
 const commonCategories = [
@@ -247,7 +247,7 @@ export default function NewCasePage() {
                     options={Object.entries(priorityDescriptions).map(([value, description]) => ({
                       label: (
                         <div>
-                          <Tag color={priorityColors[value as CasePriority]} style={{ marginRight: 8 }}>
+                          <Tag style={{ marginRight: 8 }}>
                             {value}
                           </Tag>
                           {description}
@@ -280,16 +280,17 @@ export default function NewCasePage() {
                     name="assignedToUserId"
                     label="Assign To (Optional)"
                     placeholder="Select user to assign this case to"
-                    showSearch
-                    allowClear
-                    filterOption={(input, option) =>
-                      (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                    }
                     options={users?.data?.filter((user: User) => user && user.id != null).map((user: User) => ({
                       value: user.id,
                       label: `${user.fullName} (${user.email})`,
                     })) || []}
                     extra="Leave blank to assign later"
+                    fieldProps={{
+                      showSearch: true,
+                      allowClear: true,
+                      filterOption: (input: string, option?: { label?: string }) =>
+                        (option?.label ?? '').toLowerCase().includes(input.toLowerCase()),
+                    }}
                   />
                 </Col>
               </Row>
@@ -402,9 +403,9 @@ export default function NewCasePage() {
 
             <div>
               <h4 style={{ marginBottom: 8 }}>Priority Levels:</h4>
-              {Object.entries(priorityDescriptions).map(([level, description]) => (
+              {(Object.entries(priorityDescriptions) as unknown as [CasePriority, string][]).map(([level, description]) => (
                 <div key={level} style={{ marginBottom: 8 }}>
-                  <Tag color={priorityColors[level as CasePriority]} style={{ minWidth: 80 }}>
+                  <Tag color={priorityColors[level]} style={{ minWidth: 80 }}>
                     {level}
                   </Tag>
                   <span style={{ fontSize: '12px' }}>{description}</span>

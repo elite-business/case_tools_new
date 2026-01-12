@@ -28,6 +28,16 @@ class WebSocketService {
     if (this.connected && this.client?.connected) {
       return;
     }
+    if (this.client) {
+      if (this.client.active || this.client.connected) {
+        return;
+      }
+      try {
+        this.client.deactivate();
+      } catch (error) {
+        // Ignore cleanup failures and reinitialize
+      }
+    }
 
     this.userId = userId;
     this.token = token;
@@ -37,7 +47,7 @@ class WebSocketService {
     // Use SockJS for fallback support
     const wsUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
     
-    this.client = new Client({
+    const client = new Client({
       webSocketFactory: () => new SockJS(`${wsUrl}/ws`),
       connectHeaders: {
         Authorization: `Bearer ${token}`,
@@ -49,15 +59,19 @@ class WebSocketService {
       heartbeatOutgoing: 4000,
     });
 
-    this.client.onConnect = this.onConnect.bind(this);
-    this.client.onStompError = this.onError.bind(this);
-    this.client.onWebSocketError = this.onError.bind(this);
-    this.client.onDisconnect = this.onDisconnect.bind(this);
+    client.onConnect = this.onConnect.bind(this);
+    client.onStompError = this.onError.bind(this);
+    client.onWebSocketError = this.onError.bind(this);
+    client.onDisconnect = this.onDisconnect.bind(this);
 
+    this.client = client;
     this.client.activate();
   }
 
   private onConnect() {
+    if (!this.client || !this.client.connected) {
+      return;
+    }
     this.connected = true;
 
     // Subscribe to user-specific notifications
@@ -77,7 +91,7 @@ class WebSocketService {
       if (this.userTeams && this.userTeams.length > 0) {
         this.userTeams.forEach(teamId => {
           const teamChannel = `/topic/team.${teamId}`;
-          this.client.subscribe(teamChannel, (message: IMessage) => {
+          this.client!.subscribe(teamChannel, (message: IMessage) => {
             console.debug(`Received message on team channel ${teamId}:`, message);
             this.handleMessage(message);
           });

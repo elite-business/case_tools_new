@@ -373,13 +373,13 @@ export default function DashboardPage() {
                     Refresh
                   </Button>
                   <Button icon={<ExportOutlined />}>Export</Button>
-                  <Button 
+                  {/* <Button 
                     type="primary" 
                     icon={<PlusOutlined />}
                     onClick={() => router.push('/alerts/builder')}
                   >
                     Create Rule
-                  </Button>
+                  </Button> */}
                 </Space>
               ) : (
                 <Space>
@@ -652,13 +652,13 @@ export default function DashboardPage() {
                       >
                         View All
                       </Button>
-                      <Button 
+                      {/* <Button 
                         type="primary" 
                         size="small"
                         onClick={() => router.push('/alerts/builder')}
                       >
                         Create Rule
-                      </Button>
+                      </Button> */}
                     </Space>
                   }
                 >

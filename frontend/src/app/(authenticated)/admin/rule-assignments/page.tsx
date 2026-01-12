@@ -76,31 +76,43 @@ export default function RuleAssignmentsPage() {
   const queryClient = useQueryClient();
 
   // Fetch rule assignments
-  const { data: assignmentsData, isLoading: assignmentsLoading, refetch } = useQuery({
+  const { data: assignmentsResponse, isLoading: assignmentsLoading, refetch } = useQuery({
     queryKey: ['rule-assignments', searchTerm, filterActive],
-    queryFn: () => ruleAssignmentsApi.getRuleAssignments({
-      search: searchTerm || undefined,
-      active: filterActive,
-      page: 0,
-      size: 100,
-    }),
+    queryFn: async () => {
+      const response = await ruleAssignmentsApi.getRuleAssignments({
+        search: searchTerm || undefined,
+        active: filterActive,
+        page: 0,
+        size: 100,
+      });
+      return response.data;
+    },
   });
 
   // Fetch assignment statistics
   const { data: statsData } = useQuery({
     queryKey: ['rule-assignment-stats'],
-    queryFn: () => ruleAssignmentsApi.getStatistics(),
+    queryFn: async () => {
+      const response = await ruleAssignmentsApi.getStatistics();
+      return response.data;
+    },
   });
 
   // Fetch users and teams for assignment
   const { data: usersData } = useQuery({
     queryKey: ['users'],
-    queryFn: () => usersApi.getAll(),
+    queryFn: async () => {
+      const response = await usersApi.getAll();
+      return response.data;
+    },
   });
 
   const { data: teamsData } = useQuery({
     queryKey: ['teams'],
-    queryFn: () => teamsApi.getAll(),
+    queryFn: async () => {
+      const response = await teamsApi.getAll();
+      return response.data;
+    },
   });
 
   // Mutations
@@ -145,8 +157,8 @@ export default function RuleAssignmentsPage() {
   });
 
   const toggleStatusMutation = useMutation({
-    // mutationFn: ({ uid, active }: { uid: string; active: boolean }) =>
-    //   ruleAssignmentsApi.toggleRuleStatus(uid, active),
+    mutationFn: ({ uid, active }: { uid: string; active: boolean }) =>
+      ruleAssignmentsApi.toggleRuleStatus(uid, active),
     onSuccess: () => {
       message.success('Rule status updated');
       queryClient.invalidateQueries({ queryKey: ['rule-assignments'] });
@@ -412,7 +424,7 @@ export default function RuleAssignmentsPage() {
     },
   ];
 
-  const assignments = assignmentsData?.content || [];
+  const assignments = assignmentsResponse?.content || [];
   const stats = statsData || {
     totalRules: 0,
     assignedRules: 0,
@@ -550,8 +562,8 @@ export default function RuleAssignmentsPage() {
           rowKey="id"
           loading={assignmentsLoading}
           pagination={{
-            total: assignmentsData?.totalElements || 0,
-            pageSize: assignmentsData?.size || 20,
+            total: assignmentsResponse?.totalElements || 0,
+            pageSize: assignmentsResponse?.size || 20,
             showSizeChanger: true,
             showTotal: (total) => `Total ${total} rules`,
           }}

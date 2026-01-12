@@ -26,8 +26,8 @@ import {
   Spin,
 } from 'antd';
 import {
-  TrendingUpOutlined,
-  TrendingDownOutlined,
+  RiseOutlined as TrendingUpOutlined,
+  FallOutlined as TrendingDownOutlined,
   AlertOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
@@ -42,7 +42,7 @@ import { Area, Column, Pie, Gauge } from '@ant-design/charts';
 import { useQuery } from '@tanstack/react-query';
 import { analyticsApi } from '@/lib/api-client';
 import { useAuthStore } from '@/store/auth-store';
-import dayjs from 'dayjs';
+import dayjs, { Dayjs } from 'dayjs';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -52,7 +52,7 @@ export default function AnalyticsPage() {
   
   // Check user role and permissions
   const userRole = user?.role || (user?.roles && user.roles[0]) || 'VIEWER';
-  const [dateRange, setDateRange] = useState([
+  const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null]>([
     dayjs().subtract(30, 'day'),
     dayjs(),
   ]);
@@ -63,43 +63,48 @@ export default function AnalyticsPage() {
   const { data: overviewData, isLoading: overviewLoading } = useQuery({
     queryKey: ['analytics', 'overview', dateRange],
     queryFn: () => analyticsApi.getOverview({
-      startDate: dateRange[0].format('YYYY-MM-DD'),
-      endDate: dateRange[1].format('YYYY-MM-DD'),
+      startDate: dateRange[0]?.format('YYYY-MM-DD') || '',
+      endDate: dateRange[1]?.format('YYYY-MM-DD') || '',
     }),
+    enabled: !!dateRange[0] && !!dateRange[1],
   });
 
   const { data: trendsData, isLoading: trendsLoading } = useQuery({
     queryKey: ['analytics', 'trends', dateRange, timeframe],
     queryFn: () => analyticsApi.getTrends({
-      startDate: dateRange[0].format('YYYY-MM-DD'),
-      endDate: dateRange[1].format('YYYY-MM-DD'),
+      startDate: dateRange[0]?.format('YYYY-MM-DD') || '',
+      endDate: dateRange[1]?.format('YYYY-MM-DD') || '',
       interval: timeframe,
     }),
+    enabled: !!dateRange[0] && !!dateRange[1],
   });
 
   const { data: performanceData } = useQuery({
     queryKey: ['analytics', 'performance', dateRange],
     queryFn: () => analyticsApi.getPerformanceMetrics({
-      startDate: dateRange[0].format('YYYY-MM-DD'),
-      endDate: dateRange[1].format('YYYY-MM-DD'),
+      startDate: dateRange[0]?.format('YYYY-MM-DD') || '',
+      endDate: dateRange[1]?.format('YYYY-MM-DD') || '',
     }),
+    enabled: !!dateRange[0] && !!dateRange[1],
   });
 
   const { data: topAlerts } = useQuery({
     queryKey: ['analytics', 'top-alerts', dateRange],
     queryFn: () => analyticsApi.getTopAlerts({
-      startDate: dateRange[0].format('YYYY-MM-DD'),
-      endDate: dateRange[1].format('YYYY-MM-DD'),
+      startDate: dateRange[0]?.format('YYYY-MM-DD') || '',
+      endDate: dateRange[1]?.format('YYYY-MM-DD') || '',
       limit: 10,
     }),
+    enabled: !!dateRange[0] && !!dateRange[1],
   });
 
   const { data: userActivity } = useQuery({
     queryKey: ['analytics', 'user-activity', dateRange],
     queryFn: () => analyticsApi.getUserActivity({
-      startDate: dateRange[0].format('YYYY-MM-DD'),
-      endDate: dateRange[1].format('YYYY-MM-DD'),
+      startDate: dateRange[0]?.format('YYYY-MM-DD') || '',
+      endDate: dateRange[1]?.format('YYYY-MM-DD') || '',
     }),
+    enabled: !!dateRange[0] && !!dateRange[1],
   });
 
   const overview = overviewData?.data;

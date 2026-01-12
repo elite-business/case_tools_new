@@ -253,7 +253,7 @@ const NotificationsPage: React.FC = () => {
           </Empty>
         ) : (
           <div className="space-y-1">
-            {notifications.map((notification) => (
+            {notifications.map((notification:any) => (
               <NotificationItem
                 key={notification.id}
                 notification={notification}
@@ -459,7 +459,7 @@ const NotificationsPage: React.FC = () => {
             <Card>
               <Statistic
                 title="This Week"
-                value={notifications.filter(n => 
+                value={notifications.filter((n:any) => 
                   new Date(n.createdAt) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
                 ).length}
                 prefix={<BellOutlined style={{ color: '#1890ff' }} />}
@@ -471,7 +471,7 @@ const NotificationsPage: React.FC = () => {
             <Card>
               <Statistic
                 title="Critical"
-                value={notifications.filter(n => n.severity === 'CRITICAL').length}
+                value={notifications.filter((n:any) => n.severity === 'CRITICAL').length}
                 prefix={<BellOutlined style={{ color: '#ff4d4f' }} />}
                 loading={isLoading}
                 valueStyle={{ color: '#ff4d4f' }}

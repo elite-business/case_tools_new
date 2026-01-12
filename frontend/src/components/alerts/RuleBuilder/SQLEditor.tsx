@@ -39,11 +39,11 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ className }) => {
   const editorRef = useRef<any>(null);
 
   // Get suggestions for the current schema/table
-  const { data: suggestionsData } = useQuery({
+  const { data: suggestionsData } = useQuery<{ data: any[] }>({
     queryKey: ['alert-suggestions', selectedSchema, selectedTable],
     queryFn: () => 
       selectedSchema && selectedTable 
-        ? alertsApi.getSuggestions(selectedSchema, selectedTable)
+        ? alertsApi.getSuggestions(selectedSchema, selectedTable).then((res) => ({ data: res.data }))
         : Promise.resolve({ data: [] }),
     enabled: Boolean(selectedSchema && selectedTable),
     staleTime: 10 * 60 * 1000, // 10 minutes
@@ -376,9 +376,9 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ className }) => {
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                 {columns.map((column, index) => (
                   <div key={index} className="flex items-center space-x-2">
-                    <Text code className="text-xs">{column.name}</Text>
-                    <Tag size="small" className="text-xs">
-                      {column.type.toLowerCase()}
+                    <Text code className="text-xs">{column.column_name}</Text>
+                    <Tag className="text-xs">
+                      {column.data_type.toLowerCase()}
                     </Tag>
                   </div>
                 ))}

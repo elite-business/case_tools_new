@@ -215,7 +215,7 @@ export default function UsersPage() {
     {
       title: 'User',
       key: 'user',
-      render: (_, record: User) => (
+      render: (_: any, record: User) => (
         <div>
           <div className="font-medium">{record.fullName || record.username || 'Unnamed User'}</div>
           <div className="text-sm text-gray-500">@{record.username || 'no-username'}</div>
@@ -268,7 +268,7 @@ export default function UsersPage() {
     {
       title: 'Last Login',
       key: 'lastLogin',
-      render: (_, record: User) => {
+      render: (_: any, record: User) => {
         if (!record.updatedAt) return '-';
         return (
           <div className="text-sm">
@@ -280,7 +280,7 @@ export default function UsersPage() {
     {
       title: 'Actions',
       key: 'actions',
-      render: (_, record: User) => (
+      render: (_: any, record: User) => (
         <Space>
           <Button
             type="link"
@@ -317,9 +317,9 @@ export default function UsersPage() {
   ];
 
   // Calculate statistics
-  const activeUsers = users.filter(user => user.isActive).length;
-  const adminUsers = users.filter(user => user.role === 'ADMIN').length;
-  const recentUsers = users.filter(user => 
+  const activeUsers = users.filter((user: any) => user.isActive).length;
+  const adminUsers = users.filter((user: any) => user.role === 'ADMIN').length;
+  const recentUsers = users.filter((user: any) => 
     dayjs().diff(dayjs(user.createdAt), 'days') <= 7
   ).length;
 

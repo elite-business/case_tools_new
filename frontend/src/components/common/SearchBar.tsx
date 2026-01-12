@@ -378,7 +378,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
                       {result.tags && result.tags.length > 0 && (
                         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                           {result.tags.map(tag => (
-                            <Tag key={tag} size="small" style={{ fontSize: 10 }}>
+                            <Tag key={tag} style={{ fontSize: 10 }}>
                               {tag}
                             </Tag>
                           ))}
@@ -472,7 +472,11 @@ const SearchBar: React.FC<SearchBarProps> = ({
             // Delay hiding suggestions to allow clicks
             setTimeout(() => setShowSuggestions(false), 200);
           }}
-          onPressEnter={() => handleSearch(searchValue)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              handleSearch(searchValue);
+            }
+          }}
         />
         
         {showFilters && (

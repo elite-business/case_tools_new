@@ -11,10 +11,12 @@ export interface User {
   firstName?: string;
   lastName?: string;
   roles: string[];
-  role: string; // Single role from backend
+  role: string;
   active: boolean;
   createdAt: string;
   lastLogin?: string;
+  token?:string;
+  teams?:any
 }
 
 interface AuthState {

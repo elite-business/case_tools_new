@@ -195,10 +195,10 @@ export default function AlertRuleBuilder() {
               category,
               evaluationInterval,
               evaluationFor,
-              thresholdOperator,
-              thresholdValue,
+              thresholdOperator: thresholdOperator ?? undefined,
+              thresholdValue: thresholdValue ?? undefined,
               contactPoints: selectedContactPoints,
-              folderId: selectedFolder,
+              folderId: selectedFolder ?? undefined,
               type: 'THRESHOLD',
             };
             

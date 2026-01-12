@@ -1,12 +1,19 @@
 package com.elite.casetools.controller;
 
-import com.elite.casetools.dto.*;
+import com.elite.casetools.dto.CreateUserRequest;
+import com.elite.casetools.dto.ResetPasswordRequest;
+import com.elite.casetools.dto.UpdateUserRequest;
+import com.elite.casetools.dto.UserActivityResponse;
+import com.elite.casetools.dto.UserDto;
+import com.elite.casetools.entity.CaseActivity;
 import com.elite.casetools.entity.User;
+import com.elite.casetools.repository.CaseActivityRepository;
 import com.elite.casetools.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
@@ -28,6 +35,7 @@ import java.util.stream.Collectors;
 public class UserController {
 
     private final UserService userService;
+    private final CaseActivityRepository caseActivityRepository;
 
     /**
      * Get all users with pagination
@@ -164,6 +172,25 @@ public class UserController {
     }
 
     /**
+     * Get recent activity for a specific user
+     */
+    @GetMapping("/{id}/activity")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER') or #id == authentication.principal.id")
+    public ResponseEntity<List<UserActivityResponse>> getUserActivity(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        User user = userService.getUserById(id);
+        Page<CaseActivity> activities = caseActivityRepository
+                .findByPerformedByOrderByPerformedAtDesc(user, PageRequest.of(page, size));
+
+        List<UserActivityResponse> response = activities.stream()
+                .map(this::convertToUserActivity)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(response);
+    }
+
+    /**
      * Convert User entity to DTO with frontend-compatible field names
      */
     private UserDto convertToDto(User user) {
@@ -194,6 +221,21 @@ public class UserController {
                 .build();
         
         return dto;
+    }
+
+    private UserActivityResponse convertToUserActivity(CaseActivity activity) {
+        return UserActivityResponse.builder()
+                .action(activity.getActivityType().name())
+                .type(activity.getActivityType().name())
+                .description(activity.getDescription() != null
+                        ? activity.getDescription()
+                        : activity.getDetails())
+                .timestamp(activity.getPerformedAt() != null
+                        ? activity.getPerformedAt()
+                        : activity.getCreatedAt())
+                .caseId(activity.getCaseEntity() != null ? activity.getCaseEntity().getId() : null)
+                .caseNumber(activity.getCaseEntity() != null ? activity.getCaseEntity().getCaseNumber() : null)
+                .build();
     }
 }
 

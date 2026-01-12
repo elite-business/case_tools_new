@@ -83,9 +83,9 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({
     case 'severity':
       config = severityConfig[value as CaseSeverity];
       break;
-    case 'priority':
-      config = priorityConfig[value as CasePriority];
-      break;
+    // case 'priority':
+    //   config = priorityConfig[value as CasePriority];
+    //   break;
     case 'health':
       config = healthConfig[value as keyof typeof healthConfig];
       break;
@@ -97,7 +97,7 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({
     config = { color: 'default', text: value };
   }
 
-  const variants = {
+  const variants: any = {
     initial: { scale: 0.8, opacity: 0 },
     animate: { 
       scale: 1, 
@@ -110,7 +110,7 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({
     }
   };
 
-  const iconVariants = {
+  const iconVariants: any = {
     rotate: {
       rotate: 360,
       transition: { duration: 1, repeat: Infinity, ease: 'linear' }

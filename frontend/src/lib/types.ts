@@ -6,10 +6,13 @@ export interface User {
   email: string;
   fullName: string;
   role: string;
+  roles?: string[]; // For multiple roles support
   department?: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  token?: string; // JWT token
+  teams?: any[]; // User teams
 }
 
 export interface Case {
@@ -275,6 +278,7 @@ export interface AlertCondition {
   field: string;
   operator: string;
   value: string | number;
+  upperValue?: string | number;
   logic?: 'AND' | 'OR';
 }
 
@@ -306,6 +310,10 @@ export interface CreateAlertRuleRequest {
   severity: AlertSeverity;
   query: string;
   threshold?: number;
+  thresholdOperator?: string;
+  thresholdValue?: number;
+  contactPoints?: string[];
+  folderId?: string | number;
   evaluationInterval: string;
   evaluationFor?: string;
   notificationChannels?: string[];
@@ -573,7 +581,7 @@ export interface GrafanaAlert {
   ruleId: string;
   ruleUid: string;
   severity: AlertSeverity;
-  status: 'firing' | 'resolved' | 'pending';
+  status: 'firing' | 'resolved' | 'pending' | 'closed';
   state: string;
   summary: string;
   description: string;

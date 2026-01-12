@@ -44,13 +44,13 @@ const AlertCard: React.FC<AlertCardProps> = ({
 
   const getStatusIcon = () => {
     switch (alert.status) {
-      case 'OPEN':
+      case 'firing':
         return <ExclamationCircleOutlined style={{ color: '#ff4d4f' }} />;
-      case 'ACKNOWLEDGED':
+      case 'pending':
         return <ClockCircleOutlined style={{ color: '#fa8c16' }} />;
-      case 'RESOLVED':
+      case 'resolved':
         return <CheckCircleOutlined style={{ color: '#52c41a' }} />;
-      case 'CLOSED':
+      case 'closed':
         return <CheckCircleOutlined style={{ color: '#52c41a' }} />;
       default:
         return <ExclamationCircleOutlined />;
@@ -77,13 +77,13 @@ const AlertCard: React.FC<AlertCardProps> = ({
       onClick: () => window.open(`${process.env.NEXT_PUBLIC_GRAFANA_URL}/d/${alert.dashboardUid}`, '_blank'),
     }] : []),
     { type: 'divider' as const },
-    ...(onAcknowledge && alert.status === 'OPEN' && !alert.acknowledgedBy ? [{
+    ...(onAcknowledge && alert.status === 'firing' && !alert.acknowledgedBy ? [{
       key: 'acknowledge',
       icon: <CheckCircleOutlined />,
       label: 'Acknowledge',
       onClick: () => onAcknowledge(alert.id),
     }] : []),
-    ...(onResolve && (alert.status === 'OPEN' || alert.status === 'ACKNOWLEDGED') ? [{
+    ...(onResolve && alert.status === 'firing' ? [{
       key: 'resolve',
       icon: <CheckCircleOutlined />,
       label: 'Resolve',
@@ -195,7 +195,7 @@ const AlertCard: React.FC<AlertCardProps> = ({
             <Text type="secondary" className="text-xs block mb-1">Labels:</Text>
             <div className="flex flex-wrap gap-1">
               {Object.entries(alert.labels).slice(0, 4).map(([key, value]) => (
-                <Tag key={key} size="small" className="text-xs">
+                <Tag key={key} className="text-xs">
                   {key}: {value}
                 </Tag>
               ))}
@@ -207,7 +207,7 @@ const AlertCard: React.FC<AlertCardProps> = ({
                     ))}
                   </div>
                 }>
-                  <Tag size="small" className="text-xs">
+                  <Tag className="text-xs">
                     +{Object.keys(alert.labels).length - 4} more
                   </Tag>
                 </Tooltip>
@@ -229,7 +229,7 @@ const AlertCard: React.FC<AlertCardProps> = ({
                 Create Case
               </Button>
             )}
-            {onAcknowledge && alert.status === 'OPEN' && !alert.acknowledgedBy && (
+            {onAcknowledge && alert.status === 'firing' && !alert.acknowledgedBy && (
               <Button 
                 size="small"
                 icon={<CheckCircleOutlined />}

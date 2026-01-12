@@ -1,0 +1,18 @@
+[Unit]
+Description=CaseTools Backend
+After=network.target
+
+[Service]
+User=taha
+WorkingDirectory=/opt/casetools/back
+EnvironmentFile=/opt/casetools/back/.env-prod
+ExecStart=/usr/bin/java -jar /opt/casetools/back/casetools.war --server.address=0.0.0.0 --server.port=8085
+Restart=always
+RestartSec=3
+SuccessExitStatus=143
+
+# Optional:
+Environment=SPRING_PROFILES_ACTIVE=prod
+
+[Install]
+WantedBy=multi-user.target

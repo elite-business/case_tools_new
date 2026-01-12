@@ -14,6 +14,7 @@ import {
   theme,
   Drawer,
 } from 'antd';
+import type { MenuProps } from 'antd';
 import {
   DashboardOutlined,
   AlertOutlined,
@@ -43,14 +44,15 @@ const { Text } = Typography;
 
 interface MenuItem {
   key: string;
-  label: string;
-  icon: React.ReactNode;
-  path: string;
+  label: React.ReactNode;
+  icon?: React.ReactNode;
+  path?: string;
   badge?: number;
   children?: MenuItem[];
   access?: string[];
   disabled?: boolean;
   onClick?: () => void;
+  type?: 'divider';
 }
 
 interface SidebarProps {
@@ -362,41 +364,47 @@ const Sidebar: React.FC<SidebarProps> = ({
   };
 
   // Convert menu items to Ant Design menu format
-  const convertToAntMenuItems = (items: MenuItem[]) => {
-    return items.map(item => ({
-      key: item.key,
-      icon: item.icon,
-      label: (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span>{item.label}</span>
-          {item.badge && item.badge > 0 && (
-            <Badge 
-              count={item.badge} 
-              size="small" 
-              style={{ 
-                backgroundColor: token.colorError,
-                fontSize: 10,
-                minWidth: 16,
-                height: 16,
-                lineHeight: '16px',
-              }} 
-            />
-          )}
-        </div>
-      ),
-      children: item.children ? convertToAntMenuItems(item.children) : undefined,
-      disabled: item.disabled,
-      onClick: item.children ? undefined : () => {
-        if (item.onClick) {
-          item.onClick();
-        } else if (item.path) {
-          router.push(item.path);
-        }
-        if (mobile && onMobileDrawerClose) {
-          onMobileDrawerClose();
-        }
-      },
-    }));
+  const convertToAntMenuItems = (items: MenuItem[]): MenuProps['items'] => {
+    return items.map(item => {
+      if (item.type === 'divider') {
+        return { type: 'divider' as const };
+      }
+
+      return {
+        key: item.key,
+        icon: item.icon,
+        label: (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>{item.label}</span>
+            {item.badge && item.badge > 0 && (
+              <Badge 
+                count={item.badge} 
+                size="small" 
+                style={{ 
+                  backgroundColor: token.colorError,
+                  fontSize: 10,
+                  minWidth: 16,
+                  height: 16,
+                  lineHeight: '16px',
+                }} 
+              />
+            )}
+          </div>
+        ),
+        children: item.children ? convertToAntMenuItems(item.children) : undefined,
+        disabled: item.disabled,
+        onClick: item.children ? undefined : () => {
+          if (item.onClick) {
+            item.onClick();
+          } else if (item.path) {
+            router.push(item.path);
+          }
+          if (mobile && onMobileDrawerClose) {
+            onMobileDrawerClose();
+          }
+        },
+      };
+    });
   };
 
   const handleMenuClick = ({ key }: { key: string }) => {
@@ -702,15 +710,18 @@ export const MiniSidebar: React.FC<{
       }}
     >
       {menuItems.map(item => {
-        const isActive = pathname.startsWith(item.path);
+        const path = item.path || '';
+        const isActive = path ? pathname.startsWith(path) : false;
         return (
           <Tooltip key={item.key} title={item.label} placement="right">
             <Button
               type="text"
               icon={item.icon}
               onClick={() => {
-                router.push(item.path);
-                onItemClick?.(item);
+                if (path) {
+                  router.push(path);
+                  onItemClick?.(item);
+                }
               }}
               style={{
                 width: 44,

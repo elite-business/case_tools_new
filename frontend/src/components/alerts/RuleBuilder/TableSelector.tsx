@@ -31,9 +31,11 @@ const TableSelector: React.FC<TableSelectorProps> = ({ className }) => {
     isLoading,
     error,
     isError
-  } = useQuery({
+  } = useQuery<{ data: DatabaseTable[] }>({
     queryKey: ['alert-tables', selectedSchema],
-    queryFn: () => selectedSchema ? alertsApi.getTables(selectedSchema) : Promise.resolve({ data: [] }),
+    queryFn: () => selectedSchema
+      ? alertsApi.getTables(selectedSchema).then((res) => ({ data: res.data }))
+      : Promise.resolve({ data: [] }),
     enabled: Boolean(selectedSchema),
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes

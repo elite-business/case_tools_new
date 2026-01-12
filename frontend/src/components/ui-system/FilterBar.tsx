@@ -176,12 +176,16 @@ const FilterBar: React.FC<FilterBarProps> = ({
         );
 
       case 'daterange':
+        const rangePlaceholder = typeof filter.placeholder === 'string'
+          ? [filter.placeholder, filter.placeholder]
+          : filter.placeholder;
         return (
           <RangePicker
             {...commonProps}
             value={localFilters[filter.key] ? 
               [dayjs(localFilters[filter.key][0]), dayjs(localFilters[filter.key][1])] : 
               null}
+            placeholder={rangePlaceholder as [string, string] | undefined}
             onChange={(dates) => 
               handleFilterChange(filter.key, dates ? 
                 [dates[0]?.toISOString(), dates[1]?.toISOString()] : 

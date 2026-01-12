@@ -42,10 +42,13 @@ const ColumnSelector: React.FC<ColumnSelectorProps> = ({ className }) => {
     isError
   } = useQuery({
     queryKey: ['alert-columns', selectedSchema, selectedTable],
-    queryFn: () => 
-      selectedSchema && selectedTable 
-        ? alertsApi.getColumns(selectedSchema, selectedTable)
-        : Promise.resolve({ data: [] }),
+    queryFn: async () => {
+      if (selectedSchema && selectedTable) {
+        const response = await alertsApi.getColumns(selectedSchema, selectedTable);
+        return response.data;
+      }
+      return [];
+    },
     enabled: Boolean(selectedSchema && selectedTable),
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
@@ -131,21 +134,21 @@ const ColumnSelector: React.FC<ColumnSelectorProps> = ({ className }) => {
     if (column.is_primary_key) {
       badges.push(
         <Tooltip key="pk" title="Primary Key">
-          <Tag color="gold" size="small" icon={<KeyOutlined />}>PK</Tag>
+          <Tag color="gold" icon={<KeyOutlined />}>PK</Tag>
         </Tooltip>
       );
     }
     if (column.is_foreign_key) {
       badges.push(
         <Tooltip key="fk" title="Foreign Key">
-          <Tag color="cyan" size="small" icon={<LinkOutlined />}>FK</Tag>
+          <Tag color="cyan" icon={<LinkOutlined />}>FK</Tag>
         </Tooltip>
       );
     }
     if (column.is_nullable === 'NO') {
       badges.push(
         <Tooltip key="notnull" title="Not Null">
-          <Tag color="red" size="small">NOT NULL</Tag>
+          <Tag color="red">NOT NULL</Tag>
         </Tooltip>
       );
     }

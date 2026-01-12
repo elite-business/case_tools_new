@@ -445,6 +445,7 @@ public class CaseController {
     }
 
     private CaseActivityResponse convertActivityToResponse(CaseActivity activity) {
+        User activityUser = activity.getUser() != null ? activity.getUser() : activity.getPerformedBy();
         return CaseActivityResponse.builder()
                 .id(activity.getId())
                 .activityType(activity.getActivityType().name())
@@ -452,11 +453,13 @@ public class CaseController {
                 .oldValue(activity.getOldValue())
                 .newValue(activity.getNewValue())
                 .description(activity.getDescription())
-                .user(UserSummaryDto.builder()
-                    .id(activity.getUser().getId())
-                    .name(activity.getUser().getName())
-                    .email(activity.getUser().getEmail())
-                    .build())
+                .user(activityUser != null
+                    ? UserSummaryDto.builder()
+                        .id(activityUser.getId())
+                        .name(activityUser.getName())
+                        .email(activityUser.getEmail())
+                        .build()
+                    : null)
                 .createdAt(activity.getCreatedAt())
                 .build();
     }

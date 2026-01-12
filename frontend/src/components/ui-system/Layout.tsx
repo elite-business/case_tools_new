@@ -17,7 +17,7 @@ interface LayoutProps {
   menuItems?: MenuItem[];
 }
 
-export function Layout({ children, menuItems = [] }: LayoutProps) {
+function Layout({ children, menuItems = [] }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
   const pathname = usePathname();
@@ -122,3 +122,5 @@ export function Layout({ children, menuItems = [] }: LayoutProps) {
     </div>
   );
 }
+
+export default Layout;

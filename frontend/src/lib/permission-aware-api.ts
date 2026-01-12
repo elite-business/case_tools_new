@@ -65,13 +65,13 @@ export class PermissionAwareAPI {
       );
     },
     
-    delete: (id: number) => {
-      return this.executeWithPermission(
-        Permission.DELETE_CASES,
-        () => casesApi.delete(id),
-        'You do not have permission to delete cases'
-      );
-    },
+    // delete: (id: number) => {
+    //   return this.executeWithPermission(
+    //     Permission.DELETE_CASES,
+    //     () => casesApi.delete(id),
+    //     'You do not have permission to delete cases'
+    //   );
+    // },
     
     assign: (id: number, userId: number) => {
       return this.executeWithPermission(
@@ -252,7 +252,7 @@ export class PermissionAwareAPI {
     addMember: (teamId: number, userId: number, role: string) => {
       return this.executeWithPermission(
         Permission.MANAGE_TEAM_MEMBERS,
-        () => teamsApi.addMember(teamId, { userId, role }),
+        () => teamsApi.addMember(teamId, userId, role),
         'You do not have permission to manage team members'
       );
     },

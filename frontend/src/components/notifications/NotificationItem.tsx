@@ -65,19 +65,19 @@ const NotificationItem: React.FC<NotificationItemProps> = ({
       key: 'view-case',
       icon: <LinkOutlined />,
       label: 'View Case',
-      onClick: () => window.open(`/cases/${notification.data.caseId}`, '_blank'),
+      onClick: () => window.open(`/cases/${notification?.data?.caseId}`, '_blank'),
     }] : []),
     ...(notification.data?.alertId ? [{
       key: 'view-alert',
       icon: <LinkOutlined />,
       label: 'View Alert',
-      onClick: () => window.open(`/alerts/${notification.data.alertId}`, '_blank'),
+      onClick: () => window.open(`/alerts/${notification?.data?.alertId}`, '_blank'),
     }] : []),
     ...(notification.data?.url ? [{
       key: 'view-link',
       icon: <LinkOutlined />,
       label: 'Open Link',
-      onClick: () => window.open(notification.data.url, '_blank'),
+      onClick: () => window.open(notification?.data?.url, '_blank'),
     }] : []),
     { type: 'divider' as const },
     ...(onDelete ? [{
@@ -121,7 +121,6 @@ const NotificationItem: React.FC<NotificationItemProps> = ({
             <div className="flex items-center gap-2">
               <Tag 
                 color={severityColor} 
-                size="small"
                 style={{ margin: 0 }}
               >
                 {notification.severity}

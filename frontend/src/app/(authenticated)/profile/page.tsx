@@ -104,6 +104,7 @@ export default function ProfilePage() {
     queryFn: () => usersApi.getUserActivity?.(user?.id || 0) || Promise.resolve({ data: [] }),
     enabled: !!user?.id,
   });
+  const activityItems = activityLogs?.data ?? [];
 
   // Change password mutation
   const changePasswordMutation = useMutation({
@@ -598,9 +599,9 @@ export default function ProfilePage() {
 
               <TabPane tab="Activity Log" key="activity" icon={<SecurityScanOutlined />}>
                 <ProCard title="Recent Activity" headerBordered>
-                  {activityLogs?.data?.length > 0 ? (
+                  {activityItems.length > 0 ? (
                     <List
-                      dataSource={activityLogs.data}
+                      dataSource={activityItems}
                       renderItem={(activity: any) => (
                         <List.Item>
                           <List.Item.Meta

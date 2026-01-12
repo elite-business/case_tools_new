@@ -98,8 +98,8 @@ const Header: React.FC<HeaderProps> = ({
         .join(' ');
 
       breadcrumbs.push({
-        title: isLast ? title : <a href={currentPath}>{title}</a>,
-        href: isLast ? undefined : currentPath,
+        title: isLast ? <span>{title}</span> : <a href={currentPath}>{title}</a>,
+        href: currentPath,
       });
     });
 

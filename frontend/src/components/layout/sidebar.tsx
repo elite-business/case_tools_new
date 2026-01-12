@@ -37,9 +37,9 @@ const { Sider } = Layout;
 const { Text } = Typography;
 
 interface MenuItem {
-  key: string;
+  key?: string;
   icon?: React.ReactNode;
-  label: React.ReactNode;
+  label?: React.ReactNode;
   children?: MenuItem[];
   badge?: number;
   type?: 'divider';
@@ -241,11 +241,11 @@ export function Sidebar() {
   // Update selected keys based on current pathname
   useEffect(() => {
     const matchingItem = findMatchingMenuItem(pathname, menuItems);
-    if (matchingItem) {
+    if (matchingItem?.key) {
       setSelectedKeys([matchingItem.key]);
       // Open parent if it's a child item
       const parent = findParentMenuItem(matchingItem.key, menuItems);
-      if (parent && !sidebarCollapsed) {
+      if (parent?.key && !sidebarCollapsed) {
         setOpenKeys([parent.key]);
       }
     } else {
@@ -260,12 +260,12 @@ export function Sidebar() {
           item.key === possibleGroupKey || item.key === possibleKey
         );
         
-        if (group) {
+        if (group?.key) {
           setOpenKeys([group.key]);
           // Check children for exact match
           if (group.children) {
-            const child = group.children.find(c => pathname.startsWith(c.key));
-            if (child) {
+            const child = group.children.find(c => c.key && pathname.startsWith(c.key));
+            if (child?.key) {
               setSelectedKeys([child.key]);
             }
           }

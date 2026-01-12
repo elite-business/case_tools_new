@@ -81,6 +81,7 @@ interface AlertRule {
   assigned?: boolean;
   assignedUsers?: any[];
   assignedTeams?: any[];
+  state?:any;
 }
 
 export default function AlertRulesPage() {
@@ -223,7 +224,7 @@ export default function AlertRulesPage() {
       key: 'title',
       fixed: 'left',
       width: 250,
-      render: (text: string, record: AlertRule) => (
+      render: (_: any, record: AlertRule) => (
         <Space direction="vertical" size="small">
           <Button 
             type="link" 
@@ -233,7 +234,7 @@ export default function AlertRulesPage() {
             }}
             style={{ padding: 0 }}
           >
-            {text}
+            {record.title || 'Unnamed Rule'}
           </Button>
           <Space size="small">
             <Text type="secondary" style={{ fontSize: '12px' }}>
@@ -273,7 +274,8 @@ export default function AlertRulesPage() {
         { text: 'OK', value: 'OK' },
         { text: 'NoData', value: 'NoData' },
       ],
-      render: (state: string, record: AlertRule) => {
+      render: (_: any, record: AlertRule) => {
+        const state = record.state;
         let color = 'default';
         let icon = null;
         
@@ -371,7 +373,7 @@ export default function AlertRulesPage() {
       key: 'folder',
       width: 120,
       filters: true,
-      render: (folder: string) => (
+      render: (folder: any) => (
         <Tag icon={<DatabaseOutlined />}>{folder || 'General'}</Tag>
       ),
     },
@@ -381,7 +383,7 @@ export default function AlertRulesPage() {
       key: 'ruleGroup',
       width: 120,
       ellipsis: true,
-      render: (group: string) => (
+      render: (group: any) => (
         <Tooltip title={group}>
           <span>{group}</span>
         </Tooltip>
@@ -392,7 +394,7 @@ export default function AlertRulesPage() {
       dataIndex: 'for',
       key: 'for',
       width: 100,
-      render: (forDuration: string) => (
+      render: (forDuration: any) => (
         <Space size="small">
           <ClockCircleOutlined />
           <Text type="secondary">{forDuration || '5m'}</Text>
@@ -405,7 +407,7 @@ export default function AlertRulesPage() {
       key: 'updatedAt',
       width: 150,
       sorter: true,
-      render: (date: string) => date ? dayjs(date).format('MMM DD, YYYY HH:mm') : 'N/A',
+      render: (date: any) => date ? dayjs(date).format('MMM DD, YYYY HH:mm') : 'N/A',
     },
     {
       title: 'Actions',

@@ -273,7 +273,7 @@ export function useRealTimeNotifications(
 
     // Check severity threshold
     if (prefs.alertSeverityThreshold) {
-      const severityOrder = { 'low': 1, 'info': 1, 'medium': 2, 'high': 3, 'critical': 4 };
+      const severityOrder: Record<string, number> = { 'low': 1, 'info': 1, 'medium': 2, 'high': 3, 'critical': 4 };
       const notifSeverity = severityOrder[notificationData.severity.toLowerCase()] || 1;
       const thresholdSeverity = severityOrder[prefs.alertSeverityThreshold.toLowerCase()] || 1;
       

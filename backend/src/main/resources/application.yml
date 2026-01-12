@@ -35,7 +35,7 @@ spring:
         order_updates: true
 
   liquibase:
-    enabled: ${LIQUIBASE_ENABLED}
+    enabled: ${LIQUIBASE_ENABLED:false}
     change-log: classpath:db/changelog/db.changelog-master.xml
 
   mail:

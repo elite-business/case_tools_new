@@ -1,0 +1,35 @@
+[Unit]
+Description=CaseTools Frontend Next.js Application
+After=network.target
+
+[Service]
+Type=simple
+User=taha
+WorkingDirectory=/opt/casetools/frontend
+ExecStart=/usr/bin/node /opt/casetools/frontend/server.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=casetools-frontend
+
+# Environment variables
+Environment=NODE_ENV=production
+Environment=PORT=3001
+Environment=HOSTNAME=0.0.0.0
+
+# Optional: Load from .env.production if you create one
+EnvironmentFile=-/opt/casetools/frontend/.env.production
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+
+
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now nuxtapp
+sudo systemctl status nuxtapp --no-pager

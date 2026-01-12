@@ -122,7 +122,7 @@ const nestedTableColumns = [
     title: 'Assigned To',
     key: 'assignedTo',
     width: 200,
-    render: (_, record: Case) => (
+    render: (_: unknown, record: Case) => (
       <Space size="small" wrap>
         {record.assignedUsers?.map(user => (
           <Tag key={user.id} icon={<UserOutlined />}>
@@ -144,7 +144,7 @@ const nestedTableColumns = [
     title: 'SLA',
     key: 'sla',
     width: 100,
-    render: (_, record: Case) => {
+    render: (_: unknown, record: Case) => {
       const hoursElapsed = dayjs().diff(dayjs(record.createdAt), 'hours');
       const isBreached = record.slaBreached || hoursElapsed > 24;
       return (
