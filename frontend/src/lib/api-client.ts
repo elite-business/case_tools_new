@@ -54,10 +54,13 @@ apiClient.interceptors.response.use(
       
       // Prevent infinite retry loops
       if (originalRequest._retryCount > 2) {
-        Cookies.remove('token');
-        Cookies.remove('refreshToken');
+        Cookies.remove('token', { path: '/' });
+        Cookies.remove('refreshToken', { path: '/' });
+        Cookies.remove('token', { path: '/login' });
+        Cookies.remove('refreshToken', { path: '/login' });
         if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-          window.location.href = '/login';
+          const from = `${window.location.pathname}${window.location.search}`;
+          window.location.href = `/login?from=${encodeURIComponent(from)}`;
         }
         return Promise.reject(error);
       }
@@ -69,20 +72,25 @@ apiClient.interceptors.response.use(
             refreshToken,
           });
           const { token } = response.data;
-          Cookies.set('token', token, { expires: 1 });
+          Cookies.remove('token', { path: '/login' });
+          Cookies.set('token', token, { expires: 1, path: '/' });
           
           originalRequest.headers.Authorization = `Bearer ${token}`;
           return apiClient(originalRequest);
         } catch (refreshError) {
-          Cookies.remove('token');
-          Cookies.remove('refreshToken');
+          Cookies.remove('token', { path: '/' });
+          Cookies.remove('refreshToken', { path: '/' });
+          Cookies.remove('token', { path: '/login' });
+          Cookies.remove('refreshToken', { path: '/login' });
           if (typeof window !== 'undefined' && window.location.pathname !== '/login' && window.location.pathname !== '/unauthorized') {
-            window.location.href = '/login';
+            const from = `${window.location.pathname}${window.location.search}`;
+            window.location.href = `/login?from=${encodeURIComponent(from)}`;
           }
           return Promise.reject(refreshError);
         }
       } else if (typeof window !== 'undefined' && window.location.pathname !== '/login' && window.location.pathname !== '/unauthorized') {
-        window.location.href = '/login';
+        const from = `${window.location.pathname}${window.location.search}`;
+        window.location.href = `/login?from=${encodeURIComponent(from)}`;
       }
     }
     

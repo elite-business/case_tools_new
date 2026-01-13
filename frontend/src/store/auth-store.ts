@@ -15,85 +15,98 @@ export interface User {
   active: boolean;
   createdAt: string;
   lastLogin?: string;
-  token?:string;
-  teams?:any
+  token?: string;
+  teams?: any;
 }
 
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
-  isLoading: boolean;
-  error: string | null;
   
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   refreshToken: () => Promise<void>;
   checkAuth: () => Promise<void>;
-  clearError: () => void;
+  initializeAuth: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  isAuthenticated: false,
-  isLoading: false,
-  error: null,
+// Check initial auth state synchronously
+const getInitialAuth = () => {
+  if (typeof window === 'undefined') return { isAuthenticated: false, user: null };
+  
+  const token = Cookies.get('token');
+  const storedUser = sessionStorage.getItem('user');
+  
+  if (token && storedUser) {
+    try {
+      const user = JSON.parse(storedUser);
+      return { isAuthenticated: true, user };
+    } catch {
+      return { isAuthenticated: false, user: null };
+    }
+  }
+  
+  return { isAuthenticated: !!token, user: null };
+};
+
+const initialState = getInitialAuth();
+
+export const useAuthStore = create<AuthState>((set, get) => ({
+  user: initialState.user,
+  isAuthenticated: initialState.isAuthenticated,
 
   login: async (username, password) => {
-    set({ isLoading: true, error: null });
-    try {
-      const response = await apiClient.post('/auth/login', { username, password });
-      const { token, refreshToken, user } = response.data;
-      
-      // Transform the user object to match frontend expectations
-      const transformedUser: User = {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        firstName: user.name?.split(' ')[0],
-        lastName: user.name?.split(' ').slice(1).join(' '),
-        roles: user.role ? [user.role] : [], // Convert single role to array
-        role: user.role || 'VIEWER', // Store single role
-        active: user.active,
-        createdAt: new Date().toISOString(),
-        lastLogin: new Date().toISOString()
-      };
-      
-      Cookies.set('token', token, { expires: 1 });
-      Cookies.set('refreshToken', refreshToken, { expires: 7 });
-      
-      set({ 
-        user: transformedUser, 
-        isAuthenticated: true, 
-        isLoading: false 
-      });
-    } catch (error: any) {
-      set({ 
-        error: error.response?.data?.message || 'Login failed', 
-        isLoading: false 
-      });
-      throw error;
+    const response = await apiClient.post('/auth/login', { username, password });
+    const { token, refreshToken, user } = response.data;
+    
+    // Transform the user object to match frontend expectations
+    const transformedUser: User = {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      firstName: user.name?.split(' ')[0],
+      lastName: user.name?.split(' ').slice(1).join(' '),
+      roles: user.role ? [user.role] : [],
+      role: user.role || 'VIEWER',
+      active: user.active,
+      createdAt: new Date().toISOString(),
+      lastLogin: new Date().toISOString()
+    };
+    
+    // Set cookies
+    Cookies.set('token', token, { expires: 1, path: '/' });
+    Cookies.set('refreshToken', refreshToken, { expires: 7, path: '/' });
+    
+    // Store user in sessionStorage for fast access
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('user', JSON.stringify(transformedUser));
     }
+    
+    set({ 
+      user: transformedUser, 
+      isAuthenticated: true
+    });
   },
 
   logout: () => {
     // Clear cookies
-    Cookies.remove('token');
-    Cookies.remove('refreshToken');
+    Cookies.remove('token', { path: '/' });
+    Cookies.remove('refreshToken', { path: '/' });
     
-    // Disconnect WebSocket to prevent notifications from persisting
+    // Disconnect WebSocket
     wsService.disconnect();
     
-    // Clear React Query cache to remove notifications
+    // Clear React Query cache
     queryClient.clear();
     
-    // Clear auth state
-    set({ user: null, isAuthenticated: false });
-    
-    // Optional: Clear localStorage if any notification data is stored there
+    // Clear storage
     if (typeof window !== 'undefined') {
       localStorage.removeItem('notifications');
       sessionStorage.clear();
     }
+    
+    // Clear auth state
+    set({ user: null, isAuthenticated: false });
   },
 
   refreshToken: async () => {
@@ -107,7 +120,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       const response = await apiClient.post('/auth/refresh', { refreshToken });
       const { token, user } = response.data;
       
-      // Transform the user object if needed
+      // Transform the user object
       const transformedUser: User = {
         id: user.id,
         username: user.username,
@@ -115,34 +128,45 @@ export const useAuthStore = create<AuthState>((set) => ({
         firstName: user.name?.split(' ')[0],
         lastName: user.name?.split(' ').slice(1).join(' '),
         roles: user.role ? [user.role] : user.roles || [],
-        role: user.role || 'VIEWER', // Store single role
+        role: user.role || 'VIEWER',
         active: user.active,
         createdAt: user.createdAt || new Date().toISOString(),
         lastLogin: new Date().toISOString()
       };
       
-      Cookies.set('token', token, { expires: 1 });
+      Cookies.set('token', token, { expires: 1, path: '/' });
+      
+      // Store in sessionStorage
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('user', JSON.stringify(transformedUser));
+      }
+      
       set({ user: transformedUser, isAuthenticated: true });
     } catch (error) {
       set({ isAuthenticated: false, user: null });
-      Cookies.remove('token');
-      Cookies.remove('refreshToken');
+      Cookies.remove('token', { path: '/' });
+      Cookies.remove('refreshToken', { path: '/' });
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('user');
+      }
     }
   },
 
   checkAuth: async () => {
     const token = Cookies.get('token');
     if (!token) {
-      set({ isAuthenticated: false, user: null, isLoading: false });
+      set({ isAuthenticated: false, user: null });
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('user');
+      }
       return;
     }
 
-    set({ isLoading: true });
     try {
       const response = await apiClient.get('/auth/me');
       const user = response.data;
       
-      // Transform the user object to match frontend expectations
+      // Transform the user object
       const transformedUser: User = {
         id: user.id,
         username: user.username || user.login,
@@ -150,63 +174,51 @@ export const useAuthStore = create<AuthState>((set) => ({
         firstName: user.name?.split(' ')[0],
         lastName: user.name?.split(' ').slice(1).join(' '),
         roles: user.role ? [user.role] : user.roles || [],
-        role: user.role || 'VIEWER', // Store single role
+        role: user.role || 'VIEWER',
         active: user.active !== undefined ? user.active : true,
         createdAt: user.createdAt || new Date().toISOString(),
         lastLogin: user.lastLogin || new Date().toISOString()
       };
       
+      // Store in sessionStorage
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('user', JSON.stringify(transformedUser));
+      }
+      
       set({ 
         user: transformedUser, 
-        isAuthenticated: true, 
-        isLoading: false 
+        isAuthenticated: true
       });
     } catch (error: any) {
-      // Only attempt refresh if we get a 401, not for other errors
+      // Only attempt refresh if we get a 401
       if (error.response?.status === 401) {
         const refreshToken = Cookies.get('refreshToken');
         if (refreshToken) {
           try {
-            const refreshResponse = await apiClient.post('/auth/refresh', { refreshToken });
-            const { token: newToken, user } = refreshResponse.data;
-            Cookies.set('token', newToken, { expires: 1 });
-            
-            // Transform the refreshed user object
-            const transformedUser: User = {
-              id: user.id,
-              username: user.username || user.login,
-              email: user.email,
-              firstName: user.name?.split(' ')[0],
-              lastName: user.name?.split(' ').slice(1).join(' '),
-              roles: user.role ? [user.role] : user.roles || [],
-              role: user.role || 'VIEWER', // Store single role
-              active: user.active !== undefined ? user.active : true,
-              createdAt: user.createdAt || new Date().toISOString(),
-              lastLogin: new Date().toISOString()
-            };
-            
-            set({ 
-              user: transformedUser, 
-              isAuthenticated: true, 
-              isLoading: false 
-            });
+            await get().refreshToken();
           } catch (refreshError) {
             // Refresh failed, clear auth
-            Cookies.remove('token');
-            Cookies.remove('refreshToken');
-            set({ isAuthenticated: false, user: null, isLoading: false });
+            Cookies.remove('token', { path: '/' });
+            Cookies.remove('refreshToken', { path: '/' });
+            if (typeof window !== 'undefined') {
+              sessionStorage.removeItem('user');
+            }
+            set({ isAuthenticated: false, user: null });
           }
         } else {
-          // No refresh token, clear auth
-          Cookies.remove('token');
-          set({ isAuthenticated: false, user: null, isLoading: false });
+          // No refresh token
+          Cookies.remove('token', { path: '/' });
+          if (typeof window !== 'undefined') {
+            sessionStorage.removeItem('user');
+          }
+          set({ isAuthenticated: false, user: null });
         }
-      } else {
-        // Non-401 error, just set loading to false
-        set({ isLoading: false });
       }
     }
   },
 
-  clearError: () => set({ error: null }),
+  initializeAuth: () => {
+    const { isAuthenticated, user } = getInitialAuth();
+    set({ isAuthenticated, user });
+  },
 }));

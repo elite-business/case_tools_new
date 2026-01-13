@@ -36,20 +36,11 @@ const localeMap = {
 function AntdConfigProvider({ children }: { children: ReactNode }) {
   const { theme: appTheme } = useNextTheme();
   const { currentLanguage, isRTL } = useTheme();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   useEffect(() => {
     // Set dayjs locale
     dayjs.locale(currentLanguage);
   }, [currentLanguage]);
-
-  if (!mounted) {
-    return <>{children}</>;
-  }
 
   const isDark = appTheme === 'dark';
 
@@ -228,16 +219,6 @@ export const queryClient = new QueryClient({
 });
 
 export function Providers({ children }: ProvidersProps) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) {
-    return null;
-  }
-
   return (
     <QueryClientProvider client={queryClient}>
       <I18nextProvider i18n={i18n}>

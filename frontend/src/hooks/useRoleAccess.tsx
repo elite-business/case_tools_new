@@ -119,7 +119,7 @@ const rolePermissionsMap: Record<UserRole, RolePermissions> = {
 };
 
 export function useRoleAccess() {
-  const { user, isLoading } = useAuthStore();
+  const { user } = useAuthStore();
   const router = useRouter();
   const [permissions, setPermissions] = useState<RolePermissions>(
     rolePermissionsMap.VIEWER
@@ -137,7 +137,7 @@ export function useRoleAccess() {
   };
 
   const requireAccess = (permission: keyof RolePermissions, redirectTo = '/') => {
-    if (!isLoading && !checkAccess(permission)) {
+    if (!checkAccess(permission)) {
       router.push(redirectTo);
       return false;
     }
@@ -167,7 +167,6 @@ export function useRoleAccess() {
     isAnalyst,
     isViewer,
     canManage,
-    isLoading,
   };
 }
 
@@ -178,22 +177,20 @@ export function withRoleAccess(
   redirectTo = '/'
 ) {
   return function ProtectedComponent(props: any) {
-    const { checkAccess, isLoading } = useRoleAccess();
+    const { checkAccess } = useRoleAccess();
     const router = useRouter();
     const [hasAccess, setHasAccess] = useState(false);
 
     useEffect(() => {
-      if (!isLoading) {
-        if (!checkAccess(requiredPermission)) {
-          router.push(redirectTo);
-        } else {
-          setHasAccess(true);
-        }
+      if (!checkAccess(requiredPermission)) {
+        router.push(redirectTo);
+      } else {
+        setHasAccess(true);
       }
-    }, [isLoading, checkAccess, requiredPermission, router]);
+    }, [checkAccess, requiredPermission, router]);
 
-    if (isLoading || !hasAccess) {
-      return <div>Loading...</div>;
+    if (!hasAccess) {
+      return null;
     }
 
     return <Component {...props} />;

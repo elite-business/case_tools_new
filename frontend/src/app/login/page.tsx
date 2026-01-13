@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import {
   Form,
   Input,
@@ -18,33 +18,33 @@ import {
   LockOutlined,
   LoginOutlined,
 } from '@ant-design/icons';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/store/auth-store';
 import Cookies from 'js-cookie';
 
 const { Title, Text } = Typography;
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { login, isAuthenticated } = useAuthStore();
   const { token } = theme.useToken();
   const [loading, setLoading] = useState(false);
 
-  // Redirect to dashboard if already authenticated
   useEffect(() => {
-    const token = Cookies.get('token');
-    if (token || isAuthenticated) {
-      router.replace('/dashboard');
+    if (isAuthenticated) {
+      const from = searchParams.get('from');
+      router.replace(from || '/dashboard');
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, searchParams, router]);
 
   const handleSubmit = async (values: any) => {
     setLoading(true);
     try {
       await login(values.username, values.password);
       message.success('Login successful!');
-      // Use replace instead of push to prevent back button issues
-      router.replace('/dashboard');
+      const from = searchParams.get('from');
+      router.replace(from || '/dashboard');
     } catch (error: any) {
       message.error(error.response?.data?.message || 'Login failed');
     } finally {
@@ -78,7 +78,6 @@ export default function LoginPage() {
         <Row 
           style={{ 
             width: '100%', 
-            minHeight: 'calc(100vh - 64px)', // Adjust based on your header height
             padding: 24, 
             zIndex: 1,
             display: 'flex',
@@ -95,7 +94,6 @@ export default function LoginPage() {
                 boxShadow: '0 20px 40px rgba(0,0,0,0.1)',
                 borderRadius: 16,
               }}
-              variant="borderless"
             >
               <Space direction="vertical" size="large" style={{ width: '100%' }}>
                 {/* Logo */}
@@ -181,5 +179,13 @@ export default function LoginPage() {
           </Col>
         </Row>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginContent />
+    </Suspense>
   );
 }
