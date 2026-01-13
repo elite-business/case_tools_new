@@ -66,6 +66,7 @@ interface AlertRule {
   assignedUsers?: any[];
   assignedTeams?: any[];
   state?:any;
+  severity?:any;
 }
 
 export default function AlertRulesPage() {
