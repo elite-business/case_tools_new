@@ -20,6 +20,7 @@ public class TeamResponse {
     private String name;
     private String description;
     private UserSummaryDto leader;
+    private UserSummaryDto lead;        // Add lead field for frontend compatibility
     private String department;
     private String location;
     private String contactEmail;
@@ -27,7 +28,9 @@ public class TeamResponse {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private Boolean active;
+    private Boolean isActive;           // Add isActive for frontend compatibility
     private List<TeamMemberResponse> members;
     private Integer memberCount;
     private String specialization;
+    private TeamPerformanceResponse.TeamPerformanceData performance;
 }

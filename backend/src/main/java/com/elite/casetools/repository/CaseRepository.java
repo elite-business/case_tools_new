@@ -75,6 +75,11 @@ public interface CaseRepository extends JpaRepository<Case, Long>, JpaSpecificat
      * Count cases by status
      */
     Long countByStatus(Case.CaseStatus status);
+    
+    /**
+     * Count cases by severity
+     */
+    Long countBySeverity(Case.Severity severity);
 
     /**
      * Count open cases by user
@@ -317,7 +322,11 @@ public interface CaseRepository extends JpaRepository<Case, Long>, JpaSpecificat
     @Query(value = """
             SELECT COUNT(c.*) FROM casemanagement.case c
             WHERE (
-                jsonb_exists_any(c.assigned_to -> 'userIds', ARRAY(SELECT unnest(:userIds)::text))
+                EXISTS (
+                    SELECT 1
+                    FROM jsonb_array_elements_text(COALESCE(c.assigned_to -> 'userIds', CAST('[]' AS jsonb))) AS uid
+                    WHERE uid = ANY(CAST(:userIds AS text[]))
+                )
                 OR EXISTS (
                     SELECT 1 FROM casemanagement.team_member tm
                     WHERE tm.user_id = ANY(:userIds)
@@ -337,7 +346,11 @@ public interface CaseRepository extends JpaRepository<Case, Long>, JpaSpecificat
     @Query(value = """
             SELECT COUNT(c.*) FROM casemanagement.case c
             WHERE (
-                jsonb_exists_any(c.assigned_to -> 'userIds', ARRAY(SELECT unnest(:userIds)::text))
+                EXISTS (
+                    SELECT 1
+                    FROM jsonb_array_elements_text(COALESCE(c.assigned_to -> 'userIds', CAST('[]' AS jsonb))) AS uid
+                    WHERE uid = ANY(CAST(:userIds AS text[]))
+                )
                 OR EXISTS (
                     SELECT 1 FROM casemanagement.team_member tm
                     WHERE tm.user_id = ANY(:userIds)
@@ -359,7 +372,11 @@ public interface CaseRepository extends JpaRepository<Case, Long>, JpaSpecificat
     @Query(value = """
             SELECT COUNT(c.*) FROM casemanagement.case c
             WHERE (
-                jsonb_exists_any(c.assigned_to -> 'userIds', ARRAY(SELECT unnest(:userIds)::text))
+                EXISTS (
+                    SELECT 1
+                    FROM jsonb_array_elements_text(COALESCE(c.assigned_to -> 'userIds', CAST('[]' AS jsonb))) AS uid
+                    WHERE uid = ANY(CAST(:userIds AS text[]))
+                )
                 OR EXISTS (
                     SELECT 1 FROM casemanagement.team_member tm
                     WHERE tm.user_id = ANY(:userIds)
@@ -378,7 +395,11 @@ public interface CaseRepository extends JpaRepository<Case, Long>, JpaSpecificat
     @Query(value = """
             SELECT c.* FROM casemanagement.case c
             WHERE (
-                jsonb_exists_any(c.assigned_to -> 'userIds', ARRAY(SELECT unnest(:userIds)::text))
+                EXISTS (
+                    SELECT 1
+                    FROM jsonb_array_elements_text(COALESCE(c.assigned_to -> 'userIds', CAST('[]' AS jsonb))) AS uid
+                    WHERE uid = ANY(CAST(:userIds AS text[]))
+                )
                 OR EXISTS (
                     SELECT 1 FROM casemanagement.team_member tm
                     WHERE tm.user_id = ANY(:userIds)
@@ -400,7 +421,11 @@ public interface CaseRepository extends JpaRepository<Case, Long>, JpaSpecificat
     @Query(value = """
             SELECT c.* FROM casemanagement.case c
             WHERE (
-                jsonb_exists_any(c.assigned_to -> 'userIds', ARRAY(SELECT unnest(:userIds)::text))
+                EXISTS (
+                    SELECT 1
+                    FROM jsonb_array_elements_text(COALESCE(c.assigned_to -> 'userIds', CAST('[]' AS jsonb))) AS uid
+                    WHERE uid = ANY(CAST(:userIds AS text[]))
+                )
                 OR EXISTS (
                     SELECT 1 FROM casemanagement.team_member tm
                     WHERE tm.user_id = ANY(:userIds)
@@ -420,7 +445,11 @@ public interface CaseRepository extends JpaRepository<Case, Long>, JpaSpecificat
     @Query(value = """
             SELECT COUNT(c.*) FROM casemanagement.case c
             WHERE (
-                jsonb_exists_any(c.assigned_to -> 'userIds', ARRAY(SELECT unnest(:userIds)::text))
+                EXISTS (
+                    SELECT 1
+                    FROM jsonb_array_elements_text(COALESCE(c.assigned_to -> 'userIds', CAST('[]' AS jsonb))) AS uid
+                    WHERE uid = ANY(CAST(:userIds AS text[]))
+                )
                 OR EXISTS (
                     SELECT 1 FROM casemanagement.team_member tm
                     WHERE tm.user_id = ANY(:userIds)

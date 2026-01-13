@@ -15,8 +15,10 @@ import lombok.NoArgsConstructor;
 public class UserSummaryDto {
     private Long id;
     private String name;
+    private String fullName;    // Add fullName for frontend compatibility
     private String email;
     private String login;
+    private String username;    // Add username for frontend compatibility
     private String role;
     private String department;
 }

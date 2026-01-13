@@ -3,14 +3,9 @@
 import { useState, useEffect } from 'react';
 import { 
   Card, 
-  Form, 
-  Input, 
-  Switch, 
   Button, 
   Space, 
   message, 
-  Alert,
-  Divider,
   Badge,
   Table,
   Modal,
@@ -19,19 +14,15 @@ import {
   Statistic,
   Typography,
   Tooltip,
-  InputNumber,
   Tag
 } from 'antd';
 import { 
-  ApiOutlined, 
   CheckCircleOutlined, 
   ExclamationCircleOutlined,
   CloseCircleOutlined,
   SyncOutlined,
   DashboardOutlined,
   ReloadOutlined,
-  QuestionCircleOutlined,
-  SettingOutlined,
   UserAddOutlined,
   TeamOutlined,
   DatabaseOutlined
@@ -39,19 +30,15 @@ import {
 import { PageContainer } from '@ant-design/pro-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { grafanaApi } from '@/lib/api-client';
-import type { GrafanaSettings, GrafanaDashboard, GrafanaConnection } from '@/lib/types';
+import type { GrafanaSettings, GrafanaDashboard } from '@/lib/types';
 import RuleAssignmentModal from '@/components/grafana/RuleAssignmentModal';
 import SqlQueryModal from '@/components/grafana/SqlQueryModal';
 import dayjs from 'dayjs';
 
-const { Title, Text, Paragraph } = Typography;
+const { Text } = Typography;
 
 export default function GrafanaPage() {
-  const [form] = Form.useForm();
-  const [connectionForm] = Form.useForm();
-  const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'CONNECTED' | 'DISCONNECTED' | 'ERROR'>('DISCONNECTED');
-  const [testModalVisible, setTestModalVisible] = useState(false);
   const [assignmentModalVisible, setAssignmentModalVisible] = useState(false);
   const [sqlModalVisible, setSqlModalVisible] = useState(false);
   const [selectedRule, setSelectedRule] = useState<any>(null);
@@ -59,7 +46,7 @@ export default function GrafanaPage() {
   const queryClient = useQueryClient();
 
   // Fetch Grafana settings
-  const { data: settingsResponse, isLoading: settingsLoading } = useQuery({
+  const { data: settingsResponse } = useQuery({
     queryKey: ['grafana-settings'],
     queryFn: () => grafanaApi.getSettings(),
   });
@@ -82,7 +69,7 @@ export default function GrafanaPage() {
   const { data: statusResponse } = useQuery({
     queryKey: ['grafana-connection-status'],
     queryFn: () => grafanaApi.getConnectionStatus(),
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 60000, // Refresh every 30 seconds
   });
 
   const settings: GrafanaSettings = settingsResponse?.data || {
@@ -103,46 +90,6 @@ export default function GrafanaPage() {
       setConnectionStatus(statusResponse.data.connectionStatus);
     }
   }, [statusResponse]);
-
-  useEffect(() => {
-    if (settings) {
-      form.setFieldsValue({
-        enabled: settings.enabled,
-        url: settings.url,
-        apiKey: settings.apiKey,
-        orgId: settings.orgId,
-        defaultDashboard: settings.defaultDashboard,
-        syncEnabled: settings.syncEnabled,
-        syncInterval: settings.syncInterval,
-      });
-    }
-  }, [settings, form]);
-
-  // Update settings mutation
-  const updateSettingsMutation = useMutation({
-    mutationFn: (data: any) => grafanaApi.updateSettings(data),
-    onSuccess: () => {
-      message.success('Grafana settings updated successfully');
-      queryClient.invalidateQueries({ queryKey: ['grafana-settings'] });
-      queryClient.invalidateQueries({ queryKey: ['grafana-connection-status'] });
-    },
-    onError: (error: any) => {
-      message.error(error.response?.data?.message || 'Failed to update settings');
-    },
-  });
-
-  // Test connection mutation
-  const testConnectionMutation = useMutation({
-    mutationFn: (data: GrafanaConnection) => grafanaApi.testConnection(data),
-    onSuccess: (response) => {
-      message.success('Connection test successful');
-      setConnectionStatus('CONNECTED');
-    },
-    onError: (error: any) => {
-      message.error(error.response?.data?.message || 'Connection test failed');
-      setConnectionStatus('ERROR');
-    },
-  });
 
   // Sync dashboards mutation
   const syncMutation = useMutation({
@@ -168,30 +115,6 @@ export default function GrafanaPage() {
       message.error(error.response?.data?.message || 'Failed to sync dashboard');
     },
   });
-
-  const handleSaveSettings = (values: any) => {
-    updateSettingsMutation.mutate(values);
-  };
-
-  const handleTestConnection = () => {
-    connectionForm.validateFields().then((values) => {
-      setIsTestingConnection(true);
-      testConnectionMutation.mutate(
-        {
-          url: values.url,
-          apiKey: values.apiKey,
-          orgId: values.orgId,
-        },
-        {
-          onSettled: () => {
-            setIsTestingConnection(false);
-            setTestModalVisible(false);
-            connectionForm.resetFields();
-          },
-        }
-      );
-    });
-  };
 
   const handleSync = () => {
     Modal.confirm({
@@ -329,14 +252,6 @@ export default function GrafanaPage() {
             <div style={{ textAlign: 'right' }}>
               <Space direction="vertical">
                 <Button
-                  type="primary"
-                  icon={<ApiOutlined />}
-                  onClick={() => setTestModalVisible(true)}
-                  disabled={!settings.url || !settings.apiKey}
-                >
-                  Test Connection
-                </Button>
-                <Button
                   icon={<SyncOutlined />}
                   onClick={handleSync}
                   loading={syncMutation.isPending}
@@ -349,175 +264,6 @@ export default function GrafanaPage() {
           </Col>
         </Row>
       </Card>
-
-      <Row gutter={24}>
-        <Col span={12}>
-          {/* Configuration Card */}
-          <Card 
-            title={
-              <Space>
-                <SettingOutlined />
-                <span>Connection Settings</span>
-              </Space>
-            }
-            loading={settingsLoading}
-          >
-            <Form
-              form={form}
-              layout="vertical"
-              onFinish={handleSaveSettings}
-              initialValues={settings}
-            >
-              <Form.Item name="enabled" valuePropName="checked">
-                <Switch
-                  checkedChildren="Enabled"
-                  unCheckedChildren="Disabled"
-                  style={{ marginBottom: 16 }}
-                />
-              </Form.Item>
-
-              <Form.Item
-                label={
-                  <Space>
-                    <span>Grafana URL</span>
-                    <Tooltip title="The base URL of your Grafana instance (e.g., https://grafana.example.com)">
-                      <QuestionCircleOutlined />
-                    </Tooltip>
-                  </Space>
-                }
-                name="url"
-                rules={[
-                  { required: true, message: 'Please enter Grafana URL' },
-                  { type: 'url', message: 'Please enter a valid URL' }
-                ]}
-              >
-                <Input placeholder="https://grafana.example.com" />
-              </Form.Item>
-
-              <Form.Item
-                label={
-                  <Space>
-                    <span>API Key</span>
-                    <Tooltip title="Grafana API key with Admin or Editor permissions">
-                      <QuestionCircleOutlined />
-                    </Tooltip>
-                  </Space>
-                }
-                name="apiKey"
-                rules={[{ required: true, message: 'Please enter API key' }]}
-              >
-                <Input.Password placeholder="Enter Grafana API key" />
-              </Form.Item>
-
-              <Form.Item
-                label="Organization ID"
-                name="orgId"
-                rules={[{ required: true, message: 'Please enter organization ID' }]}
-              >
-                <InputNumber placeholder="1" min={1} style={{ width: '100%' }} />
-              </Form.Item>
-
-              <Form.Item label="Default Dashboard" name="defaultDashboard">
-                <Input placeholder="Dashboard UID (optional)" />
-              </Form.Item>
-
-              <Divider>Synchronization Settings</Divider>
-
-              <Form.Item name="syncEnabled" valuePropName="checked">
-                <Switch
-                  checkedChildren="Auto Sync Enabled"
-                  unCheckedChildren="Auto Sync Disabled"
-                />
-              </Form.Item>
-
-              <Form.Item
-                label={
-                  <Space>
-                    <span>Sync Interval (seconds)</span>
-                    <Tooltip title="How often to automatically sync dashboards from Grafana">
-                      <QuestionCircleOutlined />
-                    </Tooltip>
-                  </Space>
-                }
-                name="syncInterval"
-                rules={[{ required: true, message: 'Please enter sync interval' }]}
-              >
-                <InputNumber min={60} max={3600} style={{ width: '100%' }} />
-              </Form.Item>
-
-              <Form.Item>
-                <Button
-                  type="primary"
-                  htmlType="submit"
-                  loading={updateSettingsMutation.isPending}
-                  block
-                >
-                  Save Settings
-                </Button>
-              </Form.Item>
-            </Form>
-          </Card>
-        </Col>
-
-        <Col span={12}>
-          {/* Information Card */}
-          <Card title="Setup Instructions" style={{ height: '100%' }}>
-            <div>
-              <Title level={5}>Getting Started</Title>
-              <Paragraph>
-                To integrate with Grafana, you'll need to create an API key and configure the connection settings.
-              </Paragraph>
-
-              <Title level={5}>Steps:</Title>
-              <ol>
-                <li>
-                  <Text strong>Create API Key:</Text>
-                  <br />
-                  Go to Grafana → Configuration → API Keys → Add API Key
-                </li>
-                <li>
-                  <Text strong>Set Permissions:</Text>
-                  <br />
-                  Ensure the API key has "Admin" or "Editor" role
-                </li>
-                <li>
-                  <Text strong>Configure URL:</Text>
-                  <br />
-                  Enter your Grafana instance URL (including protocol)
-                </li>
-                <li>
-                  <Text strong>Test Connection:</Text>
-                  <br />
-                  Use the "Test Connection" button to verify settings
-                </li>
-                <li>
-                  <Text strong>Sync Dashboards:</Text>
-                  <br />
-                  Click "Sync Dashboards" to import your dashboards
-                </li>
-              </ol>
-
-              <Alert
-                message="Security Notice"
-                description="API keys are stored encrypted and only accessible to admin users. Regular users will only see dashboard links."
-                type="info"
-                showIcon
-                style={{ marginTop: 16 }}
-              />
-
-              <Divider />
-
-              <Title level={5}>Features:</Title>
-              <ul>
-                <li>Automatic dashboard synchronization</li>
-                <li>Embedded dashboard viewing</li>
-                <li>Alert integration with Grafana</li>
-                <li>Real-time connection monitoring</li>
-              </ul>
-            </div>
-          </Card>
-        </Col>
-      </Row>
 
       {/* Dashboards Table */}
       {settings.enabled && (
@@ -737,67 +483,6 @@ export default function GrafanaPage() {
           />
         </Card>
       )}
-
-      {/* Test Connection Modal */}
-      <Modal
-        title="Test Grafana Connection"
-        open={testModalVisible}
-        onCancel={() => setTestModalVisible(false)}
-        footer={[
-          <Button key="cancel" onClick={() => setTestModalVisible(false)}>
-            Cancel
-          </Button>,
-          <Button 
-            key="test" 
-            type="primary" 
-            loading={isTestingConnection}
-            onClick={handleTestConnection}
-          >
-            Test Connection
-          </Button>
-        ]}
-      >
-        <Alert
-          message="Test Connection Settings"
-          description="Enter the connection details to test the Grafana API connectivity."
-          type="info"
-          showIcon
-          style={{ marginBottom: 16 }}
-        />
-        
-        <Form
-          form={connectionForm}
-          layout="vertical"
-        >
-          <Form.Item
-            label="Grafana URL"
-            name="url"
-            rules={[
-              { required: true, message: 'Please enter Grafana URL' },
-              { type: 'url', message: 'Please enter a valid URL' }
-            ]}
-          >
-            <Input placeholder="https://grafana.example.com" />
-          </Form.Item>
-
-          <Form.Item
-            label="API Key"
-            name="apiKey"
-            rules={[{ required: true, message: 'Please enter API key' }]}
-          >
-            <Input.Password placeholder="Enter Grafana API key" />
-          </Form.Item>
-
-          <Form.Item
-            label="Organization ID"
-            name="orgId"
-            initialValue={1}
-            rules={[{ required: true, message: 'Please enter organization ID' }]}
-          >
-            <InputNumber placeholder="1" min={1} style={{ width: '100%' }} />
-          </Form.Item>
-        </Form>
-      </Modal>
 
       {/* Rule Assignment Modal */}
       <RuleAssignmentModal

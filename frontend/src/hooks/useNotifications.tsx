@@ -23,8 +23,8 @@ export const useUnreadCount = () => {
   return useQuery({
     queryKey: ['unread-count'],
     queryFn: () => notificationsApi.getUnreadCount(),
-    staleTime: 10 * 1000, // 10 seconds
-    refetchInterval: 30 * 1000, // Refetch every 30 seconds
+    staleTime: 30 * 1000, // 30 seconds
+    refetchInterval: 60 * 1000, // Refetch every minute
   });
 };
 

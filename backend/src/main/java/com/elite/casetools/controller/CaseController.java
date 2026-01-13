@@ -446,6 +446,9 @@ public class CaseController {
 
     private CaseActivityResponse convertActivityToResponse(CaseActivity activity) {
         User activityUser = activity.getUser() != null ? activity.getUser() : activity.getPerformedBy();
+        java.time.LocalDateTime activityTime = activity.getPerformedAt() != null
+                ? activity.getPerformedAt()
+                : activity.getCreatedAt();
         return CaseActivityResponse.builder()
                 .id(activity.getId())
                 .activityType(activity.getActivityType().name())
@@ -460,7 +463,7 @@ public class CaseController {
                         .email(activityUser.getEmail())
                         .build()
                     : null)
-                .createdAt(activity.getCreatedAt())
+                .createdAt(activityTime)
                 .build();
     }
 

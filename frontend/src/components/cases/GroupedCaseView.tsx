@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import Link from 'next/link';
 import { Table, Card, Tag, Space, Badge, Collapse, Empty, Typography, Row, Col, Statistic } from 'antd';
 import { 
   FlagOutlined, 
@@ -16,6 +17,9 @@ import { Case, CaseStatus, CaseSeverity } from '@/lib/types';
 import { GroupByOption, ViewMode } from './CaseGroupingControls';
 import StatusIndicator from '@/components/ui-system/StatusIndicator';
 import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
+
+dayjs.extend(relativeTime);
 
 const { Panel } = Collapse;
 const { Text, Title } = Typography;
@@ -28,6 +32,16 @@ interface GroupedCaseViewProps {
   onCaseClick?: (caseId: number) => void;
   loading?: boolean;
 }
+
+const isSlaBreached = (caseItem: Case) => {
+  if (caseItem.slaBreached) {
+    return true;
+  }
+  const deadline = caseItem.slaDeadline && dayjs(caseItem.slaDeadline).isValid()
+    ? dayjs(caseItem.slaDeadline)
+    : null;
+  return deadline ? dayjs().isAfter(deadline) : false;
+};
 
 // Helper function to group cases
 const groupCases = (cases: Case[], groupBy: GroupByOption) => {
@@ -59,7 +73,7 @@ const groupCases = (cases: Case[], groupBy: GroupByOption) => {
         key = caseItem.assignedUsers?.[0]?.name || caseItem.assignedUsers?.[0]?.fullName || 'Unassigned';
         break;
       case 'slaStatus':
-        key = caseItem.slaBreached ? 'SLA Breached' : 'Within SLA';
+        key = isSlaBreached(caseItem) ? 'SLA Breached' : 'Within SLA';
         break;
       default:
         key = 'Other';
@@ -100,9 +114,9 @@ const nestedTableColumns = [
     key: 'caseNumber',
     width: 120,
     render: (text: string, record: Case) => (
-      <a onClick={() => window.location.href = `/cases/${record.id}`}>
+      <Link href={`/cases/${record.id}`} onClick={(event) => event.stopPropagation()}>
         {text}
-      </a>
+      </Link>
     ),
   },
   {
@@ -145,8 +159,11 @@ const nestedTableColumns = [
     key: 'sla',
     width: 100,
     render: (_: unknown, record: Case) => {
-      const hoursElapsed = dayjs().diff(dayjs(record.createdAt), 'hours');
-      const isBreached = record.slaBreached || hoursElapsed > 24;
+      const createdAt = record.createdAt && dayjs(record.createdAt).isValid()
+        ? dayjs(record.createdAt)
+        : null;
+      const hoursElapsed = createdAt ? Math.max(0, dayjs().diff(createdAt, 'hours')) : 0;
+      const isBreached = isSlaBreached(record);
       return (
         <Tag color={isBreached ? 'error' : 'success'} icon={<ClockCircleOutlined />}>
           {hoursElapsed}h
@@ -159,7 +176,10 @@ const nestedTableColumns = [
     dataIndex: 'createdAt',
     key: 'createdAt',
     width: 150,
-    render: (date: string) => dayjs(date).format('MMM D, YYYY'),
+    render: (date: string) => {
+      const parsed = date ? dayjs(date) : null;
+      return parsed && parsed.isValid() ? parsed.format('MMM D, YYYY') : '-';
+    },
   },
 ];
 
@@ -199,7 +219,7 @@ const GroupedCaseView: React.FC<GroupedCaseViewProps> = ({
       open: groupCases.filter(c => c.status === 'OPEN').length,
       inProgress: groupCases.filter(c => ['ASSIGNED', 'IN_PROGRESS'].includes(c.status)).length,
       resolved: groupCases.filter(c => c.status === 'RESOLVED').length,
-      slaBreached: groupCases.filter(c => c.slaBreached).length,
+      slaBreached: groupCases.filter(c => isSlaBreached(c)).length,
     };
     return stats;
   };
@@ -287,7 +307,7 @@ const GroupedCaseView: React.FC<GroupedCaseViewProps> = ({
                       )}
                     </Space>
                     <Text type="secondary" style={{ fontSize: 12 }}>
-                      {dayjs(caseItem.createdAt).fromNow()}
+                      {caseItem.createdAt ? dayjs(caseItem.createdAt).fromNow() : 'N/A'}
                     </Text>
                   </Space>
                 </Card>
@@ -396,7 +416,7 @@ const GroupedCaseView: React.FC<GroupedCaseViewProps> = ({
                               )}
                             </Space>
                             <Text type="secondary" style={{ fontSize: 12 }}>
-                              {dayjs(caseItem.createdAt).fromNow()}
+                              {caseItem.createdAt ? dayjs(caseItem.createdAt).fromNow() : 'N/A'}
                             </Text>
                           </Space>
                         </Card>

@@ -19,6 +19,9 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 /**
  * REST controller for analytics and reporting
@@ -73,6 +76,49 @@ public class AnalyticsController {
 
         TeamPerformanceResponse performance = analyticsService.getTeamPerformance(period, teamId);
         return ResponseEntity.ok(performance);
+    }
+
+    /**
+     * Get performance metrics
+     */
+    @GetMapping("/performance")
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN', 'MANAGER', 'ANALYST')")
+    @Operation(summary = "Get performance metrics")
+    public ResponseEntity<AnalyticsPerformanceResponse> getPerformanceMetrics(
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) LocalDate endDate) {
+
+        AnalyticsPerformanceResponse performance = analyticsService.getPerformanceMetrics(startDate, endDate);
+        return ResponseEntity.ok(performance);
+    }
+
+    /**
+     * Get top alerts
+     */
+    @GetMapping("/top-alerts")
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN', 'MANAGER', 'ANALYST')")
+    @Operation(summary = "Get top alerts")
+    public ResponseEntity<List<TopAlertResponse>> getTopAlerts(
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(defaultValue = "10") int limit) {
+
+        List<TopAlertResponse> alerts = analyticsService.getTopAlerts(startDate, endDate, limit);
+        return ResponseEntity.ok(alerts);
+    }
+
+    /**
+     * Get user activity summary
+     */
+    @GetMapping("/user-activity")
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN', 'MANAGER', 'ANALYST')")
+    @Operation(summary = "Get user activity summary")
+    public ResponseEntity<List<UserActivitySummary>> getUserActivity(
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) LocalDate endDate) {
+
+        List<UserActivitySummary> activity = analyticsService.getUserActivity(startDate, endDate);
+        return ResponseEntity.ok(activity);
     }
 
     /**

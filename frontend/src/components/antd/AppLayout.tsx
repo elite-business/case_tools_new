@@ -157,11 +157,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
         icon: <AlertOutlined />,
         label: 'Alerts',
         children: [
-          {
+          ...(showManagerFeatures ? [{
             key: '/alerts/history',
             label: 'Alert Audit Trail',
             onClick: () => router.push('/alerts/history'),
-          },
+          }] : []),
           {
             key: '/alerts/rules',
             label: 'Alert Rules',
@@ -208,17 +208,12 @@ export default function AppLayout({ children }: AppLayoutProps) {
             label: 'Team Management',
             onClick: () => router.push('/admin/teams'),
           }] : []),
-          {
-            key: '/admin/rule-assignments',
-            label: 'Rule Assignments',
-            onClick: () => router.push('/admin/rule-assignments'),
-          },
-          { type: 'divider' },
-          {
-            key: '/admin/system',
-            label: 'System Settings',
-            onClick: () => router.push('/admin/system'),
-          },
+          // { type: 'divider' },
+          // {
+          //   key: '/admin/system',
+          //   label: 'System Settings',
+          //   onClick: () => router.push('/admin/system'),
+          // },
           {
             key: '/admin/grafana',
             label: 'Grafana Integration',

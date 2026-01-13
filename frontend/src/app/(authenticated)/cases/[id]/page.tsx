@@ -115,6 +115,7 @@ export default function CaseDetailPage() {
   const [performancePeriod, setPerformancePeriod] = useState('30d');
   const { userRole, hasPermission: checkPermission } = useRolePermissions();
   const canViewPerformance = userRole === 'ADMIN' || userRole === 'MANAGER';
+  const canAssignCases = userRole === 'ADMIN' || userRole === 'MANAGER';
 
   // Fetch case details
   const { data: caseData, isLoading, error } = useQuery({
@@ -221,18 +222,44 @@ export default function CaseDetailPage() {
   });
 
   const caseDetails: Case | null = caseData?.data || null;
+  const hasAssignees = !!(
+    caseDetails?.assignedUsers?.length ||
+    caseDetails?.assignedTeams?.length ||
+    caseDetails?.assignedTo
+  );
   const caseStats = caseStatsData?.data;
   const teamPerformance = teamPerformanceData?.data?.overall
     || teamPerformanceData?.data?.teams?.find((team: any) => team.teamId === selectedTeamId)
     || teamPerformanceData?.data?.teams?.[0];
-  const slaDeadline = caseDetails?.slaDeadline ? dayjs(caseDetails.slaDeadline) : null;
-  const slaTargetHours = caseDetails && slaDeadline
-    ? Math.max(1, slaDeadline.diff(dayjs(caseDetails.createdAt), 'hour', true))
+  const createdAt = caseDetails?.createdAt && dayjs(caseDetails.createdAt).isValid()
+    ? dayjs(caseDetails.createdAt)
+    : null;
+  const slaDeadline = caseDetails?.slaDeadline && dayjs(caseDetails.slaDeadline).isValid()
+    ? dayjs(caseDetails.slaDeadline)
+    : null;
+  const slaTargetHours = createdAt && slaDeadline
+    ? Math.max(1, slaDeadline.diff(createdAt, 'hour', true))
     : 24;
-  const slaElapsedHours = caseDetails ? dayjs().diff(dayjs(caseDetails.createdAt), 'hour', true) : 0;
+  const slaElapsedHours = createdAt ? dayjs().diff(createdAt, 'hour', true) : 0;
   const slaPercent = Math.min(100, (slaElapsedHours / slaTargetHours) * 100);
   const isSlaBreached = caseDetails?.slaBreached || (slaDeadline ? dayjs().isAfter(slaDeadline) : false);
   const toHours = (value?: number) => value ? Number((value / 60).toFixed(1)) : 0;
+  const formatDateTime = (value?: string) => {
+    if (!value) return '-';
+    const parsed = dayjs(value);
+    return parsed.isValid() ? parsed.format('MMMM D, YYYY [at] h:mm A') : '-';
+  };
+  const formatShortDateTime = (value?: string) => {
+    if (!value) return 'N/A';
+    const parsed = dayjs(value);
+    return parsed.isValid() ? parsed.format('YYYY-MM-DD HH:mm') : 'N/A';
+  };
+  const formatRelativeTime = (value?: string) => {
+    if (!value) return '';
+    const parsed = dayjs(value);
+    return parsed.isValid() ? parsed.fromNow() : '';
+  };
+
   const parsedAlertData = useMemo(() => {
     if (!caseDetails?.alertData) return null;
     try {
@@ -434,13 +461,13 @@ export default function CaseDetailPage() {
   }
 
   const moreActions = [
-    {
+    ...(canAssignCases ? [{
       key: 'assign',
       icon: <UserAddOutlined />,
-      label: 'Assign',
+      label: hasAssignees ? 'Reassign' : 'Assign',
       disabled: caseDetails.status === 'CLOSED' || caseDetails.status === 'CANCELLED',
       onClick: () => setAssignModalVisible(true),
-    },
+    }] : []),
     {
       key: 'start',
       icon: <CheckCircleOutlined />,
@@ -599,13 +626,13 @@ export default function CaseDetailPage() {
                             onClick: () => setEditing(true),
                             disabled: caseDetails.status === 'CLOSED' || caseDetails.status === 'CANCELLED',
                           },
-                          {
+                          ...(canAssignCases ? [{
                             key: 'assign',
                             label: 'Assign Case',
                             icon: <UserAddOutlined />,
                             onClick: () => setAssignModalVisible(true),
                             disabled: caseDetails.status === 'CLOSED' || caseDetails.status === 'CANCELLED',
-                          },
+                          }] : []),
                           CommonActions.divider,
                           {
                             key: 'resolve',
@@ -797,14 +824,14 @@ export default function CaseDetailPage() {
                   </Space>
                 </Descriptions.Item>
                 <Descriptions.Item label="Created">
-                  {dayjs(caseDetails.createdAt).format('MMMM D, YYYY [at] h:mm A')}
+                  {formatDateTime(caseDetails.createdAt)}
                 </Descriptions.Item>
                 <Descriptions.Item label="Last Updated">
-                  {dayjs(caseDetails.updatedAt).format('MMMM D, YYYY [at] h:mm A')}
+                  {formatDateTime(caseDetails.updatedAt)}
                 </Descriptions.Item>
                 {caseDetails.closedAt && (
                   <Descriptions.Item label="Closed">
-                    {dayjs(caseDetails.closedAt).format('MMMM D, YYYY [at] h:mm A')}
+                    {formatDateTime(caseDetails.closedAt)}
                   </Descriptions.Item>
                 )}
                 {caseDetails.tags && caseDetails.tags.length > 0 && (
@@ -910,13 +937,15 @@ export default function CaseDetailPage() {
                           type="warning"
                           style={{ marginTop: 8 }}
                           action={
-                            <Button 
-                              size="small" 
-                              type="primary"
-                              onClick={() => setAssignModalVisible(true)}
-                            >
-                              Assign
-                            </Button>
+                            canAssignCases ? (
+                              <Button 
+                                size="small" 
+                                type="primary"
+                                onClick={() => setAssignModalVisible(true)}
+                              >
+                                Assign
+                              </Button>
+                            ) : null
                           }
                         />
                       )}
@@ -1077,9 +1106,9 @@ export default function CaseDetailPage() {
                     <br />
                     <small>by {caseDetails.createdBy?.fullName || caseDetails.assignedBy?.name || 'System'}</small>
                     <br />
-                    <small>{dayjs(caseDetails.createdAt).format('YYYY-MM-DD HH:mm')}</small>
+                    <small>{formatShortDateTime(caseDetails.createdAt)}</small>
                     <br />
-                    <small>{dayjs(caseDetails.createdAt).fromNow()}</small>
+                    <small>{formatRelativeTime(caseDetails.createdAt)}</small>
                   </motion.div>
                 </Timeline.Item>
 
@@ -1109,9 +1138,9 @@ export default function CaseDetailPage() {
                       <br />
                       <small>by {activity.user?.name || activity.user?.fullName || activity.user?.username}</small>
                       <br />
-                      <small>{dayjs(activity.createdAt).format('YYYY-MM-DD HH:mm')}</small>
+                      <small>{formatShortDateTime(activity.createdAt)}</small>
                       <br />
-                      <small>{dayjs(activity.createdAt).fromNow()}</small>
+                      <small>{formatRelativeTime(activity.createdAt)}</small>
                     </motion.div>
                   </Timeline.Item>
                 ))}
@@ -1127,9 +1156,9 @@ export default function CaseDetailPage() {
                     >
                       <strong>Case Closed</strong>
                       <br />
-                      <small>{dayjs(caseDetails.closedAt).format('YYYY-MM-DD HH:mm')}</small>
+                      <small>{formatShortDateTime(caseDetails.closedAt)}</small>
                       <br />
-                      <small>{dayjs(caseDetails.closedAt).fromNow()}</small>
+                      <small>{formatRelativeTime(caseDetails.closedAt)}</small>
                     </motion.div>
                   </Timeline.Item>
                 )}
@@ -1229,7 +1258,7 @@ export default function CaseDetailPage() {
                                 {comment.user?.name || comment.user?.fullName || comment.user?.username || comment.author?.fullName}
                               </Text>
                               <Text type="secondary" style={{ fontSize: 12 }}>
-                                {dayjs(comment.createdAt).format('YYYY-MM-DD HH:mm')} ({dayjs(comment.createdAt).fromNow()})
+                                {comment.createdAt ? `${formatShortDateTime(comment.createdAt)} (${formatRelativeTime(comment.createdAt)})` : 'N/A'}
                               </Text>
                               {comment.isInternal && (
                                 <Tag color="orange">

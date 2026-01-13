@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import React, { useState, useRef, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { 
   PageContainer, 
   ProTable, 
@@ -14,8 +13,6 @@ import {
   Space, 
   Tag, 
   Dropdown, 
-  Modal, 
-  message,
   Badge,
   Tooltip,
   Typography,
@@ -23,33 +20,21 @@ import {
   Row,
   Col,
   Statistic,
-  Alert,
   Drawer,
-  Descriptions,
-  Avatar,
-  Progress,
-  Timeline
+  Descriptions
 } from 'antd';
 import {
-  PlusOutlined,
   EyeOutlined,
-  EditOutlined,
-  DeleteOutlined,
   ExclamationCircleOutlined,
   MoreOutlined,
-  ReloadOutlined,
-  ExportOutlined,
   ThunderboltOutlined,
   ClockCircleOutlined,
   WarningOutlined,
   TeamOutlined,
-  UserOutlined,
   DatabaseOutlined,
   PlayCircleOutlined,
   PauseCircleOutlined,
-  SettingOutlined,
   CodeOutlined,
-  BellOutlined,
   SyncOutlined,
   UserAddOutlined
 } from '@ant-design/icons';
@@ -59,8 +44,7 @@ import RuleAssignmentModal from '@/components/grafana/RuleAssignmentModal';
 import SqlQueryModal from '@/components/grafana/SqlQueryModal';
 import { useRoleAccess } from '@/hooks/useRoleAccess';
 
-const { confirm } = Modal;
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 interface AlertRule {
   uid: string;
@@ -85,19 +69,17 @@ interface AlertRule {
 }
 
 export default function AlertRulesPage() {
-  const router = useRouter();
   const actionRef = useRef<ActionType>();
   const [selectedRule, setSelectedRule] = useState<AlertRule | null>(null);
   const [detailsDrawerVisible, setDetailsDrawerVisible] = useState(false);
   const [assignmentModalVisible, setAssignmentModalVisible] = useState(false);
   const [sqlModalVisible, setSqlModalVisible] = useState(false);
   const [selectedQuery, setSelectedQuery] = useState<{ query: string; datasource?: string; title?: string }>({ query: '' });
-  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const { permissions } = useRoleAccess();
   const canManageAlerts = permissions.canManageAlerts;
 
   // Fetch alert rules statistics
-  const { data: rulesStats, isLoading: statsLoading } = useQuery({
+  const { data: rulesStats } = useQuery({
     queryKey: ['alert-rules', 'stats'],
     queryFn: async () => {
       const rules = await grafanaApi.getAlertRules();
@@ -118,67 +100,20 @@ export default function AlertRulesPage() {
     refetchInterval: 30000,
   });
 
-  // Delete rule mutation
-  const deleteRuleMutation = useMutation({
-    mutationFn: (uid: string) => grafanaApi.deleteAlertRule(uid),
-    onSuccess: () => {
-      message.success('Alert rule deleted successfully');
-      actionRef.current?.reload();
-    },
-    onError: () => {
-      message.error('Failed to delete alert rule');
-    },
+  const { data: assignmentsResponse } = useQuery({
+    queryKey: ['rule-assignments', 'all'],
+    queryFn: () => ruleAssignmentApi.getRuleAssignments({ page: 0, size: 1000 }),
+    enabled: canManageAlerts,
   });
 
-  const handleDelete = (rule: AlertRule) => {
-    confirm({
-      title: 'Delete Alert Rule',
-      icon: <ExclamationCircleOutlined />,
-      content: `Are you sure you want to delete the alert rule "${rule.title}"?`,
-      okText: 'Delete',
-      okType: 'danger',
-      onOk: () => deleteRuleMutation.mutate(rule.uid),
-    });
-  };
+  const assignmentMap = useMemo(() => {
+    const assignments = assignmentsResponse?.data?.content || [];
+    return new Map(assignments.map((assignment: any) => [assignment.grafanaRuleUid, assignment]));
+  }, [assignmentsResponse]);
 
-  const handleBulkAction = async (action: string) => {
-    if (selectedRowKeys.length === 0) {
-      message.warning('Please select alert rules to perform bulk action');
-      return;
-    }
-
-    try {
-      switch (action) {
-        case 'delete':
-          confirm({
-            title: `Delete ${selectedRowKeys.length} alert rules`,
-            icon: <ExclamationCircleOutlined />,
-            content: 'Are you sure you want to delete the selected alert rules?',
-            okText: 'Delete',
-            okType: 'danger',
-            onOk: async () => {
-              // Bulk delete logic
-              for (const uid of selectedRowKeys) {
-                await grafanaApi.deleteAlertRule(uid as string);
-              }
-              message.success(`${selectedRowKeys.length} alert rules deleted successfully`);
-              setSelectedRowKeys([]);
-              actionRef.current?.reload();
-            },
-          });
-          break;
-        case 'export':
-          message.info('Exporting selected alert rules...');
-          break;
-        case 'disable':
-          message.info('Disabling selected alert rules...');
-          break;
-        default:
-          message.info(`Bulk ${action} functionality coming soon`);
-      }
-    } catch (error) {
-      message.error('Failed to perform bulk action');
-    }
+  const normalizeSeverity = (value?: string) => {
+    const normalized = (value || 'medium').toString().toLowerCase();
+    return ['critical', 'high', 'medium', 'low'].includes(normalized) ? normalized : 'medium';
   };
 
   const showSqlQuery = (rule: AlertRule) => {
@@ -196,7 +131,7 @@ export default function AlertRulesPage() {
   };
 
   const getSeverityColor = (rule: AlertRule) => {
-    const severity = rule.labels?.severity || rule.annotations?.severity;
+    const severity = normalizeSeverity(rule.labels?.severity || rule.annotations?.severity || rule.severity);
     switch (severity) {
       case 'critical': return 'red';
       case 'high': return 'orange';
@@ -207,7 +142,7 @@ export default function AlertRulesPage() {
   };
 
   const getSeverityIcon = (rule: AlertRule) => {
-    const severity = rule.labels?.severity || rule.annotations?.severity;
+    const severity = normalizeSeverity(rule.labels?.severity || rule.annotations?.severity || rule.severity);
     switch (severity) {
       case 'critical': return <ExclamationCircleOutlined style={{ color: '#ff4d4f' }} />;
       case 'high': return <WarningOutlined style={{ color: '#ffa940' }} />;
@@ -256,10 +191,11 @@ export default function AlertRulesPage() {
         { text: 'Low', value: 'low' },
       ],
       render: (_: any, record: AlertRule) => {
-        const severity = record.labels?.severity || record.annotations?.severity || 'unknown';
+        const severity = normalizeSeverity(record.labels?.severity || record.annotations?.severity || record.severity);
+        const severityDisplay = severity.toUpperCase();
         return (
           <Tag color={getSeverityColor(record)} icon={getSeverityIcon(record)}>
-            {severity.toUpperCase()}
+            {severityDisplay}
           </Tag>
         );
       },
@@ -275,11 +211,12 @@ export default function AlertRulesPage() {
         { text: 'NoData', value: 'NoData' },
       ],
       render: (_: any, record: AlertRule) => {
-        const state = record.state;
+        const rawState = record.state || record.noDataState || 'OK';
+        const normalizedState = rawState?.toString().toUpperCase() === 'UNKNOWN' ? 'OK' : rawState;
         let color = 'default';
         let icon = null;
         
-        switch (state) {
+        switch (normalizedState) {
           case 'Alerting':
             color = 'error';
             icon = <ExclamationCircleOutlined />;
@@ -289,15 +226,21 @@ export default function AlertRulesPage() {
             icon = <PlayCircleOutlined />;
             break;
           case 'NoData':
+          case 'no_data':
             color = 'default';
             icon = <PauseCircleOutlined />;
             break;
+          default:
+            color = 'processing';
+            icon = <PlayCircleOutlined />;
         }
+        
+        const displayState = normalizedState === 'no_data' ? 'NoData' : normalizedState;
         
         return (
           <Badge status={color === 'error' ? 'error' : color === 'success' ? 'success' : 'default'}>
             <Tag color={color} icon={icon}>
-              {state}
+              {displayState}
             </Tag>
           </Badge>
         );
@@ -333,21 +276,13 @@ export default function AlertRulesPage() {
           );
         }
         
-        return canManageAlerts ? (
+        // For already assigned rules, just show status (no additional assign button)
+        return (
           <Tooltip title={`${record.assignedUsers?.length || 0} users, ${record.assignedTeams?.length || 0} teams`}>
-            <Button
-              type="link"
-              icon={<TeamOutlined />}
-              onClick={() => {
-                setSelectedRule(record);
-                setAssignmentModalVisible(true);
-              }}
-            >
+            <Tag color="blue" icon={<TeamOutlined />}>
               {totalAssignees} assigned
-            </Button>
+            </Tag>
           </Tooltip>
-        ) : (
-          <Tag color="blue">{totalAssignees} assigned</Tag>
         );
       },
     },
@@ -394,12 +329,16 @@ export default function AlertRulesPage() {
       dataIndex: 'for',
       key: 'for',
       width: 100,
-      render: (forDuration: any) => (
-        <Space size="small">
-          <ClockCircleOutlined />
-          <Text type="secondary">{forDuration || '5m'}</Text>
-        </Space>
-      ),
+      render: (_: any, record: any) => {
+        // Check both 'for' and 'for_' fields from Grafana API
+        const forDuration = record.for || record.for_ || record['for_'];
+        return (
+          <Space size="small">
+            <ClockCircleOutlined />
+            <Text type="secondary">{forDuration || '5m'}</Text>
+          </Space>
+        );
+      },
     },
     {
       title: 'Last Updated',
@@ -407,7 +346,12 @@ export default function AlertRulesPage() {
       key: 'updatedAt',
       width: 150,
       sorter: true,
-      render: (date: any) => date ? dayjs(date).format('MMM DD, YYYY HH:mm') : 'N/A',
+      render: (_: any, record: any) => {
+        // Check both 'updatedAt' and 'updated' fields from Grafana API
+        const date = record.updatedAt || record.updated;
+        const parsed = date ? dayjs(date) : null;
+        return parsed && parsed.isValid() ? parsed.format('MMM DD, YYYY HH:mm') : 'N/A';
+      },
     },
     {
       title: 'Actions',
@@ -435,12 +379,6 @@ export default function AlertRulesPage() {
               },
               ...(canManageAlerts ? [
                 {
-                  key: 'edit',
-                  label: 'Edit Rule',
-                  icon: <EditOutlined />,
-                  onClick: () => router.push(`/alerts/rules/${record.uid}/edit`),
-                },
-                {
                   key: 'assign',
                   label: 'Manage Assignment',
                   icon: <TeamOutlined />,
@@ -448,16 +386,6 @@ export default function AlertRulesPage() {
                     setSelectedRule(record);
                     setAssignmentModalVisible(true);
                   },
-                },
-                {
-                  type: 'divider',
-                },
-                {
-                  key: 'delete',
-                  label: 'Delete',
-                  icon: <DeleteOutlined />,
-                  danger: true,
-                  onClick: () => handleDelete(record),
                 },
               ] : []) as any,
             ],
@@ -537,13 +465,26 @@ export default function AlertRulesPage() {
         request={async (params, sort, filter) => {
           const response = await grafanaApi.getAlertRules();
           const rules = response.data || [];
+          const enrichedRules = rules.map((rule: any) => {
+            const ruleUid = rule.uid || rule.grafanaRuleUid;
+            const assignment = assignmentMap.get(ruleUid);
+            if (!assignment) {
+              return rule;
+            }
+            return {
+              ...rule,
+              assigned: true,
+              assignedUsers: assignment.assignedUsers || [],
+              assignedTeams: assignment.assignedTeams || [],
+            };
+          });
           
           // Apply filters
-          let filteredRules = [...rules];
+          let filteredRules = [...enrichedRules];
           
           if (filter.severity) {
             filteredRules = filteredRules.filter(rule => {
-              const severity = rule.labels?.severity || rule.annotations?.severity;
+              const severity = normalizeSeverity(rule.labels?.severity || rule.annotations?.severity);
               return filter.severity?.includes(severity);
             });
           }
@@ -562,15 +503,16 @@ export default function AlertRulesPage() {
           
           if (params.title) {
             filteredRules = filteredRules.filter(rule =>
-              rule.title.toLowerCase().includes(params.title.toLowerCase())
+              rule.title?.toLowerCase().includes(params.title.toLowerCase())
             );
           }
           
           // Apply sorting
           if (sort?.updatedAt) {
             filteredRules.sort((a, b) => {
-              const dateA = new Date(a.updatedAt || 0).getTime();
-              const dateB = new Date(b.updatedAt || 0).getTime();
+              // Check both updatedAt and updated fields
+              const dateA = new Date((a as any).updatedAt || (a as any).updated || 0).getTime();
+              const dateB = new Date((b as any).updatedAt || (b as any).updated || 0).getTime();
               return sort.updatedAt === 'ascend' ? dateA - dateB : dateB - dateA;
             });
           }
@@ -582,10 +524,6 @@ export default function AlertRulesPage() {
           };
         }}
         columns={columns}
-        rowSelection={canManageAlerts ? {
-          selectedRowKeys,
-          onChange: setSelectedRowKeys,
-        } : undefined}
         search={{
           labelWidth: 'auto',
           searchText: 'Search',
@@ -595,42 +533,6 @@ export default function AlertRulesPage() {
           defaultPageSize: 10,
           showSizeChanger: true,
           showTotal: (total) => `Total ${total} rules`,
-        }}
-        tableAlertRender={({ selectedRowKeys }) => {
-          if (!canManageAlerts) return false;
-          if (selectedRowKeys.length === 0) return false;
-          return (
-            <Alert
-              message={
-                <Space>
-                  <span>{selectedRowKeys.length} rules selected</span>
-                  <Button
-                    size="small"
-                    onClick={() => handleBulkAction('disable')}
-                  >
-                    Disable
-                  </Button>
-                  <Button
-                    size="small"
-                    onClick={() => handleBulkAction('export')}
-                  >
-                    Export
-                  </Button>
-                  <Button
-                    size="small"
-                    danger
-                    onClick={() => handleBulkAction('delete')}
-                  >
-                    Delete
-                  </Button>
-                </Space>
-              }
-              type="info"
-              showIcon
-              closable
-              onClose={() => setSelectedRowKeys([])}
-            />
-          );
         }}
       />
 
@@ -646,23 +548,15 @@ export default function AlertRulesPage() {
         }}
         extra={
           canManageAlerts ? (
-            <Space>
-              <Button
-                icon={<EditOutlined />}
-                onClick={() => router.push(`/alerts/rules/${selectedRule?.uid}/edit`)}
-              >
-                Edit
-              </Button>
-              <Button
-                icon={<TeamOutlined />}
-                onClick={() => {
-                  setDetailsDrawerVisible(false);
-                  setAssignmentModalVisible(true);
-                }}
-              >
-                Assign
-              </Button>
-            </Space>
+            <Button
+              icon={<TeamOutlined />}
+              onClick={() => {
+                setDetailsDrawerVisible(false);
+                setAssignmentModalVisible(true);
+              }}
+            >
+              Manage Assignment
+            </Button>
           ) : null
         }
       >

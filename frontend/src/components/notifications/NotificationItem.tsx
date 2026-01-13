@@ -14,6 +14,7 @@ import {
 import { Notification } from '@/lib/types';
 import { notificationUtils } from '@/hooks/useNotifications';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 const { Text, Paragraph } = Typography;
 
@@ -32,6 +33,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({
   compact = false,
   showActions = true,
 }) => {
+  const router = useRouter();
   const isRead = !!notification.readAt;
   const severityColor = notificationUtils.getSeverityColor(notification.severity);
   const severityIcon = notificationUtils.getSeverityIcon(notification.severity);
@@ -46,11 +48,11 @@ const NotificationItem: React.FC<NotificationItemProps> = ({
 
     // Navigate to related resource if available
     if (notification.data?.caseId) {
-      window.open(`/cases/${notification.data.caseId}`, '_blank');
+      router.push(`/cases/${notification.data.caseId}`);
     } else if (notification.data?.alertId) {
-      window.open(`/alerts/${notification.data.alertId}`, '_blank');
+      router.push(`/alerts/${notification.data.alertId}`);
     } else if (notification.data?.url) {
-      window.open(notification.data.url, '_blank');
+      router.push(notification.data.url);
     }
   };
 
@@ -65,19 +67,19 @@ const NotificationItem: React.FC<NotificationItemProps> = ({
       key: 'view-case',
       icon: <LinkOutlined />,
       label: 'View Case',
-      onClick: () => window.open(`/cases/${notification?.data?.caseId}`, '_blank'),
+      onClick: () => router.push(`/cases/${notification?.data?.caseId}`),
     }] : []),
     ...(notification.data?.alertId ? [{
       key: 'view-alert',
       icon: <LinkOutlined />,
       label: 'View Alert',
-      onClick: () => window.open(`/alerts/${notification?.data?.alertId}`, '_blank'),
+      onClick: () => router.push(`/alerts/${notification?.data?.alertId}`),
     }] : []),
     ...(notification.data?.url ? [{
       key: 'view-link',
       icon: <LinkOutlined />,
       label: 'Open Link',
-      onClick: () => window.open(notification?.data?.url, '_blank'),
+      onClick: () => router.push(notification?.data?.url),
     }] : []),
     { type: 'divider' as const },
     ...(onDelete ? [{

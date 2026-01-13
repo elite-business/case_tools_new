@@ -72,8 +72,12 @@ public class CaseService {
                 .customFields(request.getCustomFields())
                 .build();
 
-        // Calculate SLA deadline based on severity
-        caseEntity.setSlaDeadline(calculateSlaDeadline(request.getSeverity()));
+        // Calculate SLA deadline based on priority/severity
+        caseEntity.setSlaDeadline(calculateSlaDeadline(
+                request.getSeverity(),
+                request.getPriority(),
+                LocalDateTime.now()
+        ));
 
         // Auto-assign if enabled
         if (autoAssign && request.getAssignedToId() == null) {
@@ -144,11 +148,24 @@ public class CaseService {
             caseEntity.setSeverity(request.getSeverity());
             if (oldSeverity != request.getSeverity()) {
                 // Recalculate SLA if severity changed
-                caseEntity.setSlaDeadline(calculateSlaDeadline(request.getSeverity()));
+                caseEntity.setSlaDeadline(calculateSlaDeadline(
+                        request.getSeverity(),
+                        caseEntity.getPriority(),
+                        caseEntity.getCreatedAt()
+                ));
             }
         }
         if (request.getPriority() != null) {
+            Integer oldPriority = caseEntity.getPriority();
             caseEntity.setPriority(request.getPriority());
+            if (oldPriority == null || !oldPriority.equals(request.getPriority())) {
+                // Recalculate SLA if priority changed
+                caseEntity.setSlaDeadline(calculateSlaDeadline(
+                        caseEntity.getSeverity(),
+                        request.getPriority(),
+                        caseEntity.getCreatedAt()
+                ));
+            }
         }
         if (request.getStatus() != null) {
             updateCaseStatus(caseEntity, request.getStatus());
@@ -487,14 +504,27 @@ public class CaseService {
         return null;
     }
 
-    public LocalDateTime calculateSlaDeadline(Case.Severity severity) {
-        int minutes = switch (severity) {
-            case CRITICAL -> 15;
-            case HIGH -> 60;
-            case MEDIUM -> 240;
-            case LOW -> 1440;
-        };
-        return LocalDateTime.now().plusMinutes(minutes);
+    public LocalDateTime calculateSlaDeadline(Case.Severity severity, Integer priority, LocalDateTime referenceTime) {
+        // Prefer priority-based SLA if available, otherwise fall back to severity.
+        int hours;
+        if (priority != null) {
+            hours = switch (priority) {
+                case 1 -> 4;   // Urgent
+                case 2 -> 8;   // High
+                case 3 -> 24;  // Medium
+                case 4 -> 72;  // Low
+                default -> 24;
+            };
+        } else {
+            hours = switch (severity) {
+                case CRITICAL -> 4;
+                case HIGH -> 8;
+                case MEDIUM -> 24;
+                case LOW -> 72;
+            };
+        }
+        LocalDateTime baseTime = referenceTime != null ? referenceTime : LocalDateTime.now();
+        return baseTime.plusHours(hours);
     }
 
     private Optional<Case> findDuplicateCase(String fingerprint) {

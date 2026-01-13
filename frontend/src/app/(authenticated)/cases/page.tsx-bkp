@@ -105,7 +105,7 @@ export default function CasesPage() {
   const { data: casesStats, isLoading: statsLoading } = useQuery({
     queryKey: ['cases', 'stats'],
     queryFn: () => casesApi.getStats(),
-    refetchInterval: 30000,
+    refetchInterval: 60000,
   });
 
   // Filter configuration

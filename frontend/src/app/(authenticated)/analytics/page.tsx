@@ -38,7 +38,7 @@ import {
   DownloadOutlined,
   FilterOutlined,
 } from '@ant-design/icons';
-import { Area, Column, Pie, Gauge } from '@ant-design/charts';
+import { Area, Column, Pie } from '@ant-design/charts';
 import { useQuery } from '@tanstack/react-query';
 import { analyticsApi } from '@/lib/api-client';
 import { useAuthStore } from '@/store/auth-store';
@@ -115,21 +115,25 @@ export default function AnalyticsPage() {
   const alertTrendConfig = {
     data: trends?.alertTrends || [],
     xField: 'date',
-    yField: 'count',
-    seriesField: 'severity',
+    yField: 'value',
+    seriesField: 'type',
     smooth: true,
     color: ['#ff4d4f', '#ffa940', '#fadb14', '#52c41a'],
     legend: { position: 'top' as const },
     tooltip: {
       formatter: (datum: any) => ({
-        name: datum.severity,
-        value: `${datum.count.toLocaleString()} alerts`,
+        name: datum.type,
+        value: `${(datum.value ?? 0).toLocaleString()} alerts`,
       }),
     },
   };
 
+  const caseResolutionData = (trends?.alertTrends || [])
+    .filter((item: any) => item.type === 'Cases')
+    .map((item: any) => ({ date: item.date, value: item.value, type: 'Created' }));
+
   const caseResolutionConfig = {
-    data: trends?.caseResolution || [],
+    data: caseResolutionData,
     xField: 'date',
     yField: 'value',
     seriesField: 'type',
@@ -140,42 +144,20 @@ export default function AnalyticsPage() {
 
   const severityDistributionConfig = {
     data: overview?.severityDistribution || [],
-    angleField: 'count',
+    angleField: 'value',
     colorField: 'severity',
     radius: 0.8,
     color: ['#ff4d4f', '#ffa940', '#fadb14', '#52c41a'],
     label: {
       type: 'outer' as const,
-      content: '{name} {percentage}',
+      content: ({ severity, percent }: any) => `${severity} ${(percent * 100).toFixed(1)}%`,
     },
     interactions: [{ type: 'element-active' }],
   };
 
-  const systemHealthConfig = {
-    percent: performance?.overallHealth || 0.85,
-    range: {
-      color: ['#ff4d4f', '#ffa940', '#52c41a'],
-    },
-    indicator: {
-      pointer: { style: { stroke: '#D0D0D0' } },
-      pin: { style: { stroke: '#D0D0D0' } },
-    },
-    axis: {
-      label: {
-        formatter: (v: string) => `${Number(v) * 100}%`,
-      },
-    },
-    statistic: {
-      content: {
-        style: {
-          fontSize: '24px',
-          lineHeight: '24px',
-          color: performance?.overallHealth > 0.8 ? '#52c41a' : '#ffa940',
-        },
-        formatter: () => `${((performance?.overallHealth || 0) * 100).toFixed(1)}%`,
-      },
-    },
-  };
+  const systemHealthPercent = Math.round((performance?.overallHealth || 0) * 100);
+  const systemHealthColor =
+    systemHealthPercent >= 80 ? '#52c41a' : systemHealthPercent >= 60 ? '#ffa940' : '#ff4d4f';
 
   const alertColumns = [
     {
@@ -329,8 +311,15 @@ export default function AnalyticsPage() {
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} lg={8}>
           <Card title="System Health Score">
-            <Gauge {...systemHealthConfig} height={200} />
-            <div style={{ textAlign: 'center', marginTop: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 12 }}>
+              <Progress
+                type="dashboard"
+                percent={systemHealthPercent}
+                strokeColor={systemHealthColor}
+                format={() => `${systemHealthPercent}%`}
+              />
+            </div>
+            <div style={{ textAlign: 'center', marginTop: 12 }}>
               <Text type="secondary">Overall system performance</Text>
             </div>
           </Card>
@@ -389,7 +378,9 @@ export default function AnalyticsPage() {
                           {activity.actionsCount} actions
                         </Text>
                         <Text type="secondary" style={{ fontSize: 11 }}>
-                          Last: {dayjs(activity.lastActivity).fromNow()}
+                          Last: {activity.lastActivity && dayjs(activity.lastActivity).isValid()
+                            ? dayjs(activity.lastActivity).fromNow()
+                            : 'N/A'}
                         </Text>
                       </Space>
                     }

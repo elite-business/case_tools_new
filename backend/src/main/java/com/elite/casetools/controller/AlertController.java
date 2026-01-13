@@ -1,13 +1,17 @@
 package com.elite.casetools.controller;
 
 import com.elite.casetools.dto.AddCommentRequest;
+import com.elite.casetools.dto.AssignmentInfo;
 import com.elite.casetools.dto.CaseFilterRequest;
 import com.elite.casetools.dto.PaginatedResponse;
 import com.elite.casetools.dto.UpdateCaseRequest;
 import com.elite.casetools.entity.Case;
+import com.elite.casetools.repository.UserRepository;
 import com.elite.casetools.service.CaseService;
 import com.elite.casetools.service.SimplifiedAlertService;
 import com.elite.casetools.service.WebSocketService;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -47,11 +51,14 @@ public class AlertController {
     private final CaseService caseService;
     private final SimplifiedAlertService alertService;
     private final WebSocketService webSocketService;
+    private final UserRepository userRepository;
+    private final ObjectMapper objectMapper;
 
     /**
      * Get alert history
      */
     @GetMapping("/history")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Operation(summary = "Get alert history", description = "Retrieve paginated alert history")
     public ResponseEntity<PaginatedResponse<AlertHistoryDto>> getAlertHistory(
             @RequestParam(defaultValue = "0") int page,
@@ -236,7 +243,6 @@ public class AlertController {
         log.info("Assigning alert: {} to user: {}", id, userId);
         
         try {
-            // assignCaseToUser now takes IDs directly
             caseService.assignCaseToUser(id, userId);
             
             return ResponseEntity.ok(Map.of(
@@ -256,6 +262,7 @@ public class AlertController {
      * Export alert history
      */
     @GetMapping("/history/export")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Operation(summary = "Export alert history", description = "Export alert history in CSV or JSON format")
     public ResponseEntity<byte[]> exportHistory(
             @RequestParam(required = false) String severity,
@@ -267,9 +274,7 @@ public class AlertController {
         log.info("Exporting alert history in {} format", format);
         
         try {
-            Pageable pageable = PageRequest.of(0, 10000); // Export up to 10000 records
-            // Use getAllCases instead of searchCases
-            // getCases needs a filter, create an empty one
+            Pageable pageable = PageRequest.of(0, 10000);
             CaseFilterRequest filter = new CaseFilterRequest();
             Page<Case> cases = caseService.getCases(filter, pageable);
             
@@ -315,8 +320,6 @@ public class AlertController {
         log.info("Fetching Grafana alerts with state: {}", state);
         
         try {
-            // This would proxy to Grafana API
-            // For now, return empty list
             return ResponseEntity.ok(List.of());
         } catch (Exception e) {
             log.error("Failed to fetch Grafana alerts", e);
@@ -329,22 +332,117 @@ public class AlertController {
     private AlertHistoryDto mapCaseToAlertHistory(Case caseEntity) {
         AlertHistoryDto dto = new AlertHistoryDto();
         dto.setId(caseEntity.getId());
-        dto.setAlertName(caseEntity.getTitle());
-        dto.setAlertDescription(caseEntity.getDescription());
-        dto.setSeverity(mapPriorityToSeverity(caseEntity.getPriority()));
-        dto.setStatus(caseEntity.getStatus().toString());
+        dto.setCaseId(caseEntity.getId());
+        // Handle potential null values for alert name
+        dto.setAlertName(caseEntity.getTitle() != null ? caseEntity.getTitle() : "Unknown Alert");
+        dto.setRuleName(caseEntity.getTitle() != null ? caseEntity.getTitle() : "Unknown Rule");
+        
+        dto.setAlertDescription(caseEntity.getDescription() != null ? caseEntity.getDescription() : "");
+        dto.setSeverity(mapPriorityToSeverity(caseEntity.getPriority()).toUpperCase());
+        dto.setStatus(mapCaseStatusToAlertStatus(caseEntity.getStatus()));
         dto.setSource("Grafana");
-        dto.setCreatedAt(caseEntity.getCreatedAt());
-        dto.setUpdatedAt(caseEntity.getUpdatedAt());
-        dto.setResolvedAt(caseEntity.getResolvedAt());
-        dto.setFingerprint(caseEntity.getGrafanaAlertUid());
+        
+        // Handle date fields properly - use current time if null
+        LocalDateTime now = LocalDateTime.now();
+        dto.setCreatedAt(caseEntity.getCreatedAt() != null ? caseEntity.getCreatedAt() : now);
+        dto.setTriggeredAt(caseEntity.getCreatedAt() != null ? caseEntity.getCreatedAt() : now);
+        dto.setReceivedAt(caseEntity.getCreatedAt() != null ? caseEntity.getCreatedAt() : now);
+        dto.setUpdatedAt(caseEntity.getUpdatedAt() != null ? caseEntity.getUpdatedAt() : now);
+        dto.setResolvedAt(caseEntity.getResolvedAt()); // Can be null
+        
+        // Handle Grafana IDs safely
+        dto.setFingerprint(caseEntity.getGrafanaAlertUid() != null ? caseEntity.getGrafanaAlertUid() : "unknown");
+        dto.setGrafanaRuleUid(caseEntity.getGrafanaAlertUid() != null ? caseEntity.getGrafanaAlertUid() : "unknown");
+        dto.setRuleId(caseEntity.getGrafanaAlertId() != null ? caseEntity.getGrafanaAlertId() : "unknown");
+        
+        // Set assignment info with actual user details if available
+        AssignmentInfo assignmentInfo = caseEntity.getAssignmentInfo();
+        if (assignmentInfo != null && assignmentInfo.getUserIds() != null && !assignmentInfo.getUserIds().isEmpty()) {
+            Long assignedUserId = assignmentInfo.getUserIds().get(0);
+            dto.setAssignedToId(assignedUserId);
+            userRepository.findById(assignedUserId).ifPresent(user -> {
+                dto.setAssignedToName(user.getName());
+                dto.setAssignedToUsername(user.getLogin());
+            });
+        }
+        
+        // Populate values and thresholds from alert payload when possible
+        AlertMetrics metrics = extractAlertMetrics(caseEntity.getAlertData());
+        dto.setValue(metrics.value());
+        dto.setThreshold(metrics.threshold());
+        dto.setMessage(metrics.message() != null ? metrics.message() : generateAlertMessage(caseEntity));
         
         // Add labels from additional info if available
         Map<String, String> labels = new HashMap<>();
-        // Could add labels from case details if needed
+        labels.put("severity", dto.getSeverity());
+        if (caseEntity.getCategory() != null) {
+            labels.put("category", caseEntity.getCategory().name());
+        }
+        if (caseEntity.getAffectedServices() != null) {
+            labels.put("service", caseEntity.getAffectedServices());
+        }
         dto.setLabels(labels);
         
         return dto;
+    }
+    
+    private String mapCaseStatusToAlertStatus(Case.CaseStatus caseStatus) {
+        return switch (caseStatus) {
+            case OPEN -> "OPEN";
+            case ASSIGNED, IN_PROGRESS -> "ACKNOWLEDGED";
+            case RESOLVED -> "RESOLVED";
+            case CLOSED -> "CLOSED";
+            case CANCELLED -> "CLOSED";
+        };
+    }
+    
+    private AlertMetrics extractAlertMetrics(String alertData) {
+        if (alertData == null || alertData.isBlank()) {
+            return new AlertMetrics(null, null, null);
+        }
+        try {
+            Map<String, Object> payload = objectMapper.readValue(alertData, new TypeReference<>() {});
+            Double value = readNumeric(payload.get("value"));
+            Double threshold = readNumeric(payload.get("threshold"));
+            String message = payload.get("message") != null ? String.valueOf(payload.get("message")) : null;
+
+            Object evalMatches = payload.get("evalMatches");
+            if (evalMatches instanceof List<?> list && !list.isEmpty()) {
+                Object first = list.get(0);
+                if (first instanceof Map<?, ?> match) {
+                    if (value == null) {
+                        value = readNumeric(match.get("value"));
+                    }
+                    if (threshold == null) {
+                        threshold = readNumeric(match.get("threshold"));
+                    }
+                }
+            }
+
+            return new AlertMetrics(value, threshold, message);
+        } catch (Exception e) {
+            log.debug("Failed to parse alert data for metrics", e);
+            return new AlertMetrics(null, null, null);
+        }
+    }
+
+    private Double readNumeric(Object value) {
+        if (value == null) return null;
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        try {
+            return Double.parseDouble(value.toString());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private String generateAlertMessage(Case caseEntity) {
+        String severity = mapPriorityToSeverity(caseEntity.getPriority());
+        String service = caseEntity.getAffectedServices() != null ? caseEntity.getAffectedServices() : "system";
+        return String.format("%s alert detected in %s: %s", 
+            severity.toUpperCase(), service, caseEntity.getTitle());
     }
 
     private String mapPriorityToSeverity(Integer priority) {
@@ -388,23 +486,41 @@ public class AlertController {
      */
     public static class AlertHistoryDto {
         private Long id;
+        private Long caseId;
         private String alertName;
+        private String ruleName;
         private String alertDescription;
         private String severity;
         private String status;
         private String source;
         private LocalDateTime createdAt;
+        private LocalDateTime triggeredAt;
+        private LocalDateTime receivedAt;
         private LocalDateTime updatedAt;
         private LocalDateTime resolvedAt;
         private String fingerprint;
+        private String grafanaRuleUid;
+        private String ruleId;
+        private Double value;
+        private Double threshold;
+        private String message;
+        private Long assignedToId;
+        private String assignedToName;
+        private String assignedToUsername;
         private Map<String, String> labels;
 
         // Getters and setters
         public Long getId() { return id; }
         public void setId(Long id) { this.id = id; }
 
+        public Long getCaseId() { return caseId; }
+        public void setCaseId(Long caseId) { this.caseId = caseId; }
+
         public String getAlertName() { return alertName; }
         public void setAlertName(String alertName) { this.alertName = alertName; }
+
+        public String getRuleName() { return ruleName; }
+        public void setRuleName(String ruleName) { this.ruleName = ruleName; }
 
         public String getAlertDescription() { return alertDescription; }
         public void setAlertDescription(String alertDescription) { this.alertDescription = alertDescription; }
@@ -421,6 +537,12 @@ public class AlertController {
         public LocalDateTime getCreatedAt() { return createdAt; }
         public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 
+        public LocalDateTime getTriggeredAt() { return triggeredAt; }
+        public void setTriggeredAt(LocalDateTime triggeredAt) { this.triggeredAt = triggeredAt; }
+
+        public LocalDateTime getReceivedAt() { return receivedAt; }
+        public void setReceivedAt(LocalDateTime receivedAt) { this.receivedAt = receivedAt; }
+
         public LocalDateTime getUpdatedAt() { return updatedAt; }
         public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
 
@@ -430,7 +552,33 @@ public class AlertController {
         public String getFingerprint() { return fingerprint; }
         public void setFingerprint(String fingerprint) { this.fingerprint = fingerprint; }
 
+        public String getGrafanaRuleUid() { return grafanaRuleUid; }
+        public void setGrafanaRuleUid(String grafanaRuleUid) { this.grafanaRuleUid = grafanaRuleUid; }
+
+        public String getRuleId() { return ruleId; }
+        public void setRuleId(String ruleId) { this.ruleId = ruleId; }
+
+        public Double getValue() { return value; }
+        public void setValue(Double value) { this.value = value; }
+
+        public Double getThreshold() { return threshold; }
+        public void setThreshold(Double threshold) { this.threshold = threshold; }
+
+        public String getMessage() { return message; }
+        public void setMessage(String message) { this.message = message; }
+
+        public Long getAssignedToId() { return assignedToId; }
+        public void setAssignedToId(Long assignedToId) { this.assignedToId = assignedToId; }
+
+        public String getAssignedToName() { return assignedToName; }
+        public void setAssignedToName(String assignedToName) { this.assignedToName = assignedToName; }
+
+        public String getAssignedToUsername() { return assignedToUsername; }
+        public void setAssignedToUsername(String assignedToUsername) { this.assignedToUsername = assignedToUsername; }
+
         public Map<String, String> getLabels() { return labels; }
         public void setLabels(Map<String, String> labels) { this.labels = labels; }
     }
+
+    private record AlertMetrics(Double value, Double threshold, String message) {}
 }

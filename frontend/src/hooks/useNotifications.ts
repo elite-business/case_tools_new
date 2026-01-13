@@ -115,8 +115,8 @@ export function useUnreadCount() {
   return useQuery({
     queryKey: ['notifications', 'unread-count'],
     queryFn: () => notificationsApi.getUnreadCount(),
-    staleTime: 10000, // 10 seconds
-    refetchInterval: 30000, // 30 seconds
+    staleTime: 30000, // 30 seconds
+    refetchInterval: 60000, // 1 minute
   });
 }
 

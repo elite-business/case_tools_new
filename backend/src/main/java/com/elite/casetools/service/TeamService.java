@@ -27,6 +27,7 @@ public class TeamService {
 
     private final TeamRepository teamRepository;
     private final UserRepository userRepository;
+    private final TeamPerformanceService teamPerformanceService;
 
     /**
      * Get all teams with pagination
@@ -39,14 +40,13 @@ public class TeamService {
         if (search == null || search.trim().isEmpty()) {
             teamPage = teamRepository.findAll(pageable);
         } else {
-            // Use findAll since findBySearchTerm doesn't exist
             teamPage = teamRepository.findAll(pageable);
         }
         
         // Initialize lazy collections
         teamPage.getContent().forEach(team -> {
             if (team.getMembers() != null) {
-                team.getMembers().size(); // Force initialization
+                team.getMembers().size();
             }
         });
         
@@ -103,7 +103,6 @@ public class TeamService {
         
         Team savedTeam = teamRepository.save(team);
         
-        // Re-fetch with members to ensure they're loaded
         savedTeam = teamRepository.findById(savedTeam.getId()).orElse(savedTeam);
         
         return mapToResponseWithMembers(savedTeam);
@@ -134,19 +133,6 @@ public class TeamService {
         if (request.getDepartment() != null) {
             team.setDepartment(request.getDepartment());
         }
-        // These fields don't exist on Team entity, skipping
-        // if (request.getLocation() != null) {
-        //     team.setLocation(request.getLocation());
-        // }
-        // if (request.getContactEmail() != null) {
-        //     team.setContactEmail(request.getContactEmail());
-        // }
-        // if (request.getPhone() != null) {
-        //     team.setPhone(request.getPhone());
-        // }
-        // if (request.getSpecialization() != null) {
-        //     team.setSpecialization(request.getSpecialization());
-        // }
         if (request.getIsActive() != null) {
             team.setIsActive(request.getIsActive());
         }
@@ -228,10 +214,6 @@ public class TeamService {
                 .findFirst()
                 .orElseThrow(() -> new RuntimeException("User " + userId + " is not a member of team " + teamId));
         
-        // Since we don't have team-specific roles in the current model,
-        // we just return the member with the requested role
-        // In a real app, you might want to create a TeamMember entity with role
-        
         return mapUserToMemberResponse(user);
     }
 
@@ -241,36 +223,18 @@ public class TeamService {
     @Transactional(readOnly = true)
     public TeamPerformanceResponse.TeamPerformanceData getTeamPerformance(Long teamId, String period) {
         log.info("Getting team performance for team {} and period: {}", teamId, period);
-        
         Team team = teamRepository.findById(teamId)
                 .orElseThrow(() -> new RuntimeException("Team not found with id: " + teamId));
-        
-        // Calculate performance metrics (simplified version)
-        // In a real app, you would query the case management tables
-        List<TeamPerformanceResponse.UserPerformanceData> memberPerformance = new ArrayList<>();
-        
-        for (User member : team.getMembers()) {
-            memberPerformance.add(TeamPerformanceResponse.UserPerformanceData.builder()
-                    .userId(member.getId())
-                    .userName(member.getName())
-                    .casesHandled(0L) // Would query actual case count
-                    .casesResolved(0L) // Would query resolved cases
-                    .averageResolutionTime(0.0) // Would calculate from case data
-                    .slaCompliance(100.0) // Would calculate from case data
-                    .build());
-        }
-        
-        return TeamPerformanceResponse.TeamPerformanceData.builder()
-                .teamId(teamId)
-                .teamName(team.getName())
-                .totalCases(0L) // Would query actual total
-                .resolvedCases(0L) // Would query resolved total
-                .openCases(0L) // Would query open cases
-                .averageResolutionTime(0.0) // Would calculate average
-                .slaCompliance(100.0) // Would calculate compliance
-                .membersCount((long) team.getMembers().size())
-                .members(memberPerformance)
-                .build();
+
+        LocalDateTime endDate = LocalDateTime.now();
+        LocalDateTime startDate = switch (period != null ? period : "30d") {
+            case "7d" -> endDate.minusDays(7);
+            case "90d" -> endDate.minusDays(90);
+            default -> endDate.minusDays(30);
+        };
+
+        TeamPerformance performance = teamPerformanceService.calculateTeamPerformance(teamId, startDate, endDate);
+        return mapPerformanceToSummary(performance, team.getMembers());
     }
 
     // Helper methods
@@ -281,8 +245,12 @@ public class TeamService {
             leaderDto = UserSummaryDto.builder()
                     .id(team.getLead().getId())
                     .name(team.getLead().getName())
+                    .fullName(team.getLead().getName())
+                    .username(team.getLead().getLogin())
                     .email(team.getLead().getEmail())
+                    .login(team.getLead().getLogin())
                     .role(team.getLead().getRole() != null ? team.getLead().getRole().name() : null)
+                    .department(team.getLead().getDepartment())
                     .build();
         }
         
@@ -293,16 +261,17 @@ public class TeamService {
                 .name(team.getName())
                 .description(team.getDescription())
                 .leader(leaderDto)
+                .lead(leaderDto)
                 .department(team.getDepartment())
-                // These fields don't exist on Team entity
                 .location(null)
                 .contactEmail(null)
                 .phone(null)
                 .createdAt(team.getCreatedAt())
                 .updatedAt(team.getUpdatedAt())
                 .active(team.getIsActive())
+                .isActive(team.getIsActive())
                 .memberCount(memberCount)
-                .specialization(null) // Field doesn't exist on Team entity
+                .specialization(null) 
                 .build();
     }
     
@@ -316,15 +285,63 @@ public class TeamService {
                     
             response.setMembers(memberResponses);
         }
+        response.setPerformance(buildTeamPerformanceSummary(team));
         return response;
+    }
+
+    private TeamPerformanceResponse.TeamPerformanceData buildTeamPerformanceSummary(Team team) {
+        try {
+            LocalDateTime endDate = LocalDateTime.now();
+            LocalDateTime startDate = endDate.minusDays(30);
+            TeamPerformance performance = teamPerformanceService.calculateTeamPerformance(team.getId(), startDate, endDate);
+            return mapPerformanceToSummary(performance, team.getMembers());
+        } catch (Exception e) {
+            log.debug("Failed to build performance summary for team {}", team.getId(), e);
+            return null;
+        }
+    }
+
+    private TeamPerformanceResponse.TeamPerformanceData mapPerformanceToSummary(
+            TeamPerformance performance,
+            List<User> members) {
+        List<TeamPerformanceResponse.UserPerformanceData> memberPerformance = performance.getMemberPerformance() != null
+                ? performance.getMemberPerformance().values().stream()
+                    .map(member -> TeamPerformanceResponse.UserPerformanceData.builder()
+                            .userId(member.getUserId())
+                            .userName(member.getUserName())
+                            .casesHandled(member.getTotalCases() != null ? member.getTotalCases().longValue() : 0L)
+                            .casesResolved(member.getResolvedCases() != null ? member.getResolvedCases().longValue() : 0L)
+                            .averageResolutionTime(member.getAvgResolutionTime())
+                            .slaCompliance(member.getSlaCompliance())
+                            .build())
+                    .toList()
+                : new ArrayList<>();
+
+        long membersCount = members != null ? members.size() : memberPerformance.size();
+
+        return TeamPerformanceResponse.TeamPerformanceData.builder()
+                .teamId(performance.getTeamId())
+                .teamName(performance.getTeamName())
+                .totalCases(performance.getTotalCases())
+                .resolvedCases(performance.getResolvedCases())
+                .openCases(performance.getOpenCases())
+                .averageResolutionTime(performance.getAvgResolutionTimeMinutes())
+                .slaCompliance(performance.getSlaCompliance())
+                .membersCount(membersCount)
+                .members(memberPerformance)
+                .build();
     }
     
     private TeamMemberResponse mapUserToMemberResponse(User user) {
         UserSummaryDto userDto = UserSummaryDto.builder()
                 .id(user.getId())
                 .name(user.getName())
+                .fullName(user.getName())                     
+                .username(user.getLogin())                    
                 .email(user.getEmail())
+                .login(user.getLogin())
                 .role(user.getRole() != null ? user.getRole().name() : null)
+                .department(user.getDepartment())
                 .build();
         
         return TeamMemberResponse.builder()
@@ -337,7 +354,7 @@ public class TeamService {
                 .joinedAt(LocalDateTime.now())
                 .updatedAt(user.getUpdatedAt())
                 .active(user.getStatus() == User.UserStatus.ACTIVE)
-                .specialization(user.getDepartment()) // Use department as specialization
+                .specialization(user.getDepartment())
                 .build();
     }
 

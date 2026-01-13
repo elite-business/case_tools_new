@@ -5,7 +5,6 @@ import { Card, Menu, theme, Breadcrumb, Alert, Row, Col, Typography } from 'antd
 import { 
   UserOutlined, 
   TeamOutlined, 
-  SettingOutlined,
   DashboardOutlined,
   SafetyCertificateOutlined
 } from '@ant-design/icons';
@@ -59,12 +58,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       key: '/admin/grafana',
       icon: <DashboardOutlined />,
       label: 'Grafana Integration',
-    },
-    {
-      key: '/admin/system',
-      icon: <SettingOutlined />,
-      label: 'System Settings',
-    },
+    }
+    // ,
+    // {
+    //   key: '/admin/system',
+    //   icon: <SettingOutlined />,
+    //   label: 'System Settings',
+    // },
   ];
 
   const breadcrumbItems = [
@@ -83,8 +83,6 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     breadcrumbItems.push({ title: 'Team Management' });
   } else if (pathname.includes('/grafana')) {
     breadcrumbItems.push({ title: 'Grafana Integration' });
-  } else if (pathname.includes('/system')) {
-    breadcrumbItems.push({ title: 'System Settings' });
   }
 
   return (

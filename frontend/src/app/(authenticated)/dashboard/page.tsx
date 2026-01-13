@@ -114,7 +114,7 @@ export default function DashboardPage() {
   const { data: casesStats } = useQuery({
     queryKey: ['cases', 'stats'],
     queryFn: () => casesApi.getStats(),
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 60000, // Refresh every 30 seconds
     enabled: canViewAllData,
   });
 
@@ -122,10 +122,10 @@ export default function DashboardPage() {
     queryKey: ['alerts', 'recent'],
     queryFn: () => alertsApi.getHistory({ 
       page: 0, 
-      size: 10, 
+      size: 5, 
       sort: 'triggeredAt,desc' 
     }),
-    refetchInterval: 15000, // Refresh every 15 seconds
+    refetchInterval: 60000, // Refresh every 15 seconds
     enabled: canViewAllData,
   });
 
@@ -139,7 +139,7 @@ export default function DashboardPage() {
   const { data: myCasesResponse, isLoading: myCasesLoading } = useQuery({
     queryKey: ['cases', 'my-cases'],
     queryFn: () => casesApi.getMyCases(),
-    refetchInterval: 30000,
+    refetchInterval: 60000,
     enabled: !canViewAllData,
   });
 
@@ -192,10 +192,10 @@ export default function DashboardPage() {
     radius: 0.9,
     color: ['#ff4d4f', '#ffa940', '#fadb14', '#52c41a'],
     label: {
-      type: 'inner',
-      offset: '-30%',
+      type: 'outer',
+      offset: 8,
       content: ({ percent }: any) => `${(percent * 100).toFixed(0)}%`,
-      style: { fontSize: 14, textAlign: 'center' },
+      style: { fontSize: 12, textAlign: 'center' },
     },
     interactions: [{ type: 'element-active' }],
     legend: { position: 'bottom' },

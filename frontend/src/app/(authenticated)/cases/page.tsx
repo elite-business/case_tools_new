@@ -58,6 +58,12 @@ export default function CasesPage() {
   const isManagerOrAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
   const isAnalystOrViewer = user?.role === 'ANALYST' || user?.role === 'VIEWER';
 
+  useEffect(() => {
+    if (isManagerOrAdmin) {
+      setShowAdvanced(true);
+    }
+  }, [isManagerOrAdmin]);
+
   // Default to "My Cases" view for Analyst/Viewer roles
   useEffect(() => {
     if (isAnalystOrViewer) {

@@ -204,12 +204,15 @@ export default function TeamsPage() {
 
   const openEditModal = (team: Team) => {
     setSelectedTeam(team);
+    const leader = team.lead || team.leader;
+    const isActive = team.isActive !== undefined ? team.isActive : team.active;
+    
     form.setFieldsValue({
       name: team.name,
       description: team.description,
-      leadId: team.lead?.id,
+      leadId: leader?.id,
       department: team.department,
-      isActive: team.isActive,
+      isActive: isActive,
     });
     setIsEditModalVisible(true);
   };
@@ -243,15 +246,22 @@ export default function TeamsPage() {
       title: 'Team Lead',
       key: 'lead',
       render: (_: any, record: Team) => {
-        if (!record.lead) {
+        // Handle both lead and leader fields from backend
+        const leader = record.lead || record.leader;
+        if (!leader) {
           return <span className="text-gray-400">No lead assigned</span>;
         }
+        
+        // Handle different user object structures
+        const displayName = (leader as any).fullName || (leader as any).name || 'Unknown';
+        const displayUsername = (leader as any).username || (leader as any).login || 'unknown';
+        
         return (
           <div className="flex items-center space-x-2">
             <Avatar size="small" icon={<UserAddOutlined />} />
             <div>
-              <div className="text-sm font-medium">{record.lead.fullName}</div>
-              <div className="text-xs text-gray-500">@{record.lead.username}</div>
+              <div className="text-sm font-medium">{displayName}</div>
+              <div className="text-xs text-gray-500">@{displayUsername}</div>
             </div>
           </div>
         );
@@ -260,18 +270,30 @@ export default function TeamsPage() {
     {
       title: 'Members',
       key: 'members',
-      render: (_: any, record: Team) => (
-        <div>
-          <div className="text-sm font-medium">{record.members?.length || 0} members</div>
-          <Avatar.Group size="small" maxCount={4}>
-            {(record.members || []).map(member => (
-              <Avatar key={member.id} size="small">
-                {member.fullName?.split(' ').map(n => n[0]).join('') || member.username?.[0] || '?'}
-              </Avatar>
-            ))}
-          </Avatar.Group>
-        </div>
-      ),
+      render: (_: any, record: Team) => {
+        const memberCount = record.memberCount || record.members?.length || 0;
+        const members = record.members || [];
+        
+        return (
+          <div>
+            <div className="text-sm font-medium">{memberCount} members</div>
+            <Avatar.Group size="small" maxCount={4}>
+              {members.map((member: any) => {
+                // Handle both User and TeamMemberResponse structures
+                const user = member.user || member;
+                const displayName = user.fullName || user.name || user.username || user.login || 'U';
+                const initials = displayName.split(' ').map((n: string) => n[0]).join('').substring(0, 2);
+                
+                return (
+                  <Avatar key={member.id} size="small">
+                    {initials}
+                  </Avatar>
+                );
+              })}
+            </Avatar.Group>
+          </div>
+        );
+      },
     },
     {
       title: 'Department',
@@ -311,12 +333,17 @@ export default function TeamsPage() {
       title: 'Status',
       dataIndex: 'isActive',
       key: 'status',
-      render: (isActive: boolean) => (
-        <Badge 
-          status={isActive ? 'success' : 'error'} 
-          text={isActive ? 'Active' : 'Inactive'} 
-        />
-      ),
+      render: (_: any, record: Team) => {
+        // Handle both isActive and active fields from backend
+        const isActive = record.isActive !== undefined ? record.isActive : record.active;
+        
+        return (
+          <Badge 
+            status={isActive ? 'success' : 'error'} 
+            text={isActive ? 'Active' : 'Inactive'} 
+          />
+        );
+      },
     },
     {
       title: 'Actions',
@@ -657,7 +684,10 @@ export default function TeamsPage() {
           >
             <Select placeholder="Select user to add">
               {availableUsers
-                .filter((user: any) => !(selectedTeam?.members || []).some((member: any) => member.id === user.id))
+                .filter((user: any) => !(selectedTeam?.members || []).some((member: any) => {
+                  const memberId = member.user?.id || member.id;
+                  return memberId === user.id;
+                }))
                 .map((user: User) => (
                 <Option key={user.id} value={user.id}>
                   {user.fullName} (@{user.username})
@@ -735,52 +765,70 @@ export default function TeamsPage() {
                 columns={[
                   {
                     title: 'Name',
-                    render: (_, user: User) => (
-                      <div className="flex items-center space-x-2">
-                        <Avatar size="small">
-                          {user.fullName?.split(' ').map(n => n[0]).join('') || user.username?.[0] || '?'}
-                        </Avatar>
-                        <div>
-                          <div className="font-medium">{user.fullName}</div>
-                          <div className="text-xs text-gray-500">@{user.username}</div>
+                    render: (_, member: any) => {
+                      // Handle both User and TeamMemberResponse structures
+                      const user = member.user || member;
+                      const displayName = user.fullName || user.name || 'Unknown';
+                      const displayUsername = user.username || user.login || 'unknown';
+                      const leader = selectedTeam.lead || selectedTeam.leader;
+                      const isLead = leader && leader.id === user.id;
+                      
+                      return (
+                        <div className="flex items-center space-x-2">
+                          <Avatar size="small">
+                            {displayName.split(' ').map((n: string) => n[0]).join('').substring(0, 2) || '?'}
+                          </Avatar>
+                          <div>
+                            <div className="font-medium">{displayName}</div>
+                            <div className="text-xs text-gray-500">@{displayUsername}</div>
+                          </div>
+                          {isLead && (
+                            <Badge count="Lead" style={{ backgroundColor: '#52c41a' }} />
+                          )}
                         </div>
-                        {user.id === selectedTeam.lead?.id && (
-                          <Badge count="Lead" style={{ backgroundColor: '#52c41a' }} />
-                        )}
-                      </div>
-                    ),
+                      );
+                    },
                   },
                   {
                     title: 'Email',
-                    dataIndex: 'email',
+                    render: (_, member: any) => {
+                      const user = member.user || member;
+                      return user.email || '-';
+                    },
                   },
                   {
                     title: 'Role',
-                    dataIndex: 'role',
+                    render: (_, member: any) => {
+                      const user = member.user || member;
+                      return member.role || user.role || 'Member';
+                    },
                   },
                   {
                     title: 'Actions',
-                    render: (_, user: User) => (
-                      <Popconfirm
-                        title="Remove Member"
-                        description="Are you sure you want to remove this member from the team?"
-                        onConfirm={() => handleRemoveMember(selectedTeam.id, user.id)}
-                        okText="Yes"
-                        cancelText="No"
-                      >
-                        <Button
-                          type="link"
-                          size="small"
-                          danger
-                          icon={<UserDeleteOutlined />}
+                    render: (_, member: any) => {
+                      const user = member.user || member;
+                      return (
+                        <Popconfirm
+                          title="Remove Member"
+                          description="Are you sure you want to remove this member from the team?"
+                          onConfirm={() => handleRemoveMember(selectedTeam.id, user.id)}
+                          okText="Yes"
+                          cancelText="No"
                         >
-                          Remove
-                        </Button>
-                      </Popconfirm>
-                    ),
+                          <Button
+                            type="link"
+                            size="small"
+                            danger
+                            icon={<UserDeleteOutlined />}
+                          >
+                            Remove
+                          </Button>
+                        </Popconfirm>
+                      );
+                    },
                   },
                 ]}
-                dataSource={selectedTeam.members || []}
+                dataSource={selectedTeam.members as any[] || []}
                 rowKey="id"
                 pagination={false}
               />

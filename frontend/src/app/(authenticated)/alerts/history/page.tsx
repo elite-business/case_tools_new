@@ -18,6 +18,7 @@ import {
   Badge,
   DatePicker,
   Select,
+  Alert,
   Card,
   Statistic,
   Row,
@@ -61,6 +62,12 @@ const severityColorMap: Record<AlertSeverity, string> = {
   CRITICAL: '#ff4d4f',
 };
 
+const formatTimestamp = (value?: string) => {
+  if (!value) return 'N/A';
+  const date = dayjs(value);
+  return date.isValid() ? date.format('YYYY-MM-DD HH:mm:ss') : 'N/A';
+};
+
 const statusColorMap: Record<AlertStatus, string> = {
   OPEN: '#ff4d4f',
   ACKNOWLEDGED: '#faad14',
@@ -90,6 +97,19 @@ export default function AlertHistoryPage() {
   const canResolveAlert = canManageAlerts(userRole);
   const canViewAllAlerts = isManagerOrHigher(userRole);
 
+  if (!canViewAllAlerts) {
+    return (
+      <PageContainer title="Alert History & Audit Trail">
+        <Alert
+          message="Access Denied"
+          description="Alert audit trail is available to admins and managers only."
+          type="error"
+          showIcon
+        />
+      </PageContainer>
+    );
+  }
+
   // Fetch alert history with role-based filtering
   const {
     data: historyData,
@@ -106,6 +126,7 @@ export default function AlertHistoryPage() {
       return alertsApi.getHistory(queryFilters);
     },
     select: (response) => response.data,
+    enabled: canViewAllAlerts,
   });
 
   // Acknowledge alert mutation
@@ -236,39 +257,61 @@ export default function AlertHistoryPage() {
       title: 'Value/Threshold',
       key: 'metrics',
       width: 120,
-      render: (_, record) => (
-        <Space direction="vertical" size="small">
-          {record?.value != null && (
-            <div style={{ fontSize: '14px', fontWeight: 'bold' }}>
-              {typeof record.value === 'number' ? record.value.toLocaleString() : record.value}
-            </div>
-          )}
-          {record?.threshold != null && (
-            <div style={{ fontSize: '12px', color: '#666' }}>
-              Threshold: {typeof record.threshold === 'number' ? record.threshold.toLocaleString() : record.threshold}
-            </div>
-          )}
-          {!record?.value && !record?.threshold && (
-            <div style={{ fontSize: '12px', color: '#999' }}>No metrics</div>
-          )}
-        </Space>
-      ),
+      render: (_, record) => {
+        const hasValue = record?.value != null;
+        const hasThreshold = record?.threshold != null;
+        return (
+          <Space direction="vertical" size="small">
+            {hasValue && (
+              <div style={{ fontSize: '14px', fontWeight: 'bold' }}>
+                {typeof record.value === 'number' ? record.value.toLocaleString() : record.value}
+              </div>
+            )}
+            {hasThreshold && (
+              <div style={{ fontSize: '12px', color: '#666' }}>
+                Threshold: {typeof record.threshold === 'number' ? record.threshold.toLocaleString() : record.threshold}
+              </div>
+            )}
+            {!hasValue && !hasThreshold && (
+              <div style={{ fontSize: '12px', color: '#999' }}>No metrics</div>
+            )}
+          </Space>
+        );
+      },
     },
     {
       title: 'Assigned To',
       dataIndex: 'assignedTo',
       key: 'assignedTo',
       width: 120,
-      render: (_, record) => (
-        record.assignedTo ? (
-          <Space>
-            <Avatar size="small" icon={<UserOutlined />} />
-            {record.assignedTo.name || record.assignedTo.username || record.assignedTo.fullName || 'Unknown User'}
-          </Space>
-        ) : (
-          <span style={{ color: '#999' }}>Unassigned</span>
-        )
-      ),
+      render: (_, record) => {
+        // Check different possible assignment field structures
+        const assignedUser = record.assignedTo;
+        const assignedToName = record.assignedToName;
+        const assignedToUsername = record.assignedToUsername;
+        
+        // If we have direct assignedTo user object
+        if (assignedUser && (assignedUser.name || assignedUser.username)) {
+          return (
+            <Space>
+              <Avatar size="small" icon={<UserOutlined />} />
+              {assignedUser.name || assignedUser.fullName || assignedUser.username || 'Unknown User'}
+            </Space>
+          );
+        }
+        
+        // If we have assignment fields from backend mapping
+        if (assignedToName && assignedToName !== 'Unknown User') {
+          return (
+            <Space>
+              <Avatar size="small" icon={<UserOutlined />} />
+              {assignedToName}
+            </Space>
+          );
+        }
+        
+        return <span style={{ color: '#999' }}>Unassigned</span>;
+      },
     },
     {
       title: 'Actions',
@@ -346,13 +389,37 @@ export default function AlertHistoryPage() {
     }
   };
 
-  // Mock statistics for the overview cards
-  const stats = {
-    total: historyData?.totalElements || 0,
-    open: historyData?.content?.filter((alert: AlertHistory) => alert.status === 'OPEN').length || 0,
-    resolved: historyData?.content?.filter((alert: AlertHistory) => alert.status === 'RESOLVED').length || 0,
-    avgResolution: 45, // in minutes
-  };
+  // Calculate real statistics from the data
+  const stats = React.useMemo(() => {
+    if (!historyData?.content) {
+      return { total: 0, open: 0, resolved: 0, avgResolution: 0 };
+    }
+    
+    const alerts = historyData.content;
+    const total = historyData.totalElements || 0;
+    const open = alerts.filter((alert: AlertHistory) => alert.status === 'OPEN').length;
+    const resolved = alerts.filter((alert: AlertHistory) => alert.status === 'RESOLVED').length;
+    
+    // Calculate average resolution time for resolved alerts
+    const resolvedAlerts = alerts.filter((alert: AlertHistory) => 
+      alert.status === 'RESOLVED' && alert.triggeredAt && alert.resolvedAt
+    );
+    
+    let avgResolution = 0;
+    if (resolvedAlerts.length > 0) {
+      const totalResolutionTime = resolvedAlerts.reduce((sum: number, alert: AlertHistory) => {
+        const triggered = dayjs(alert.triggeredAt || alert.receivedAt || alert.createdAt);
+        const resolved = dayjs(alert.resolvedAt);
+        if (triggered.isValid() && resolved.isValid()) {
+          return sum + resolved.diff(triggered, 'minute');
+        }
+        return sum;
+      }, 0);
+      avgResolution = Math.round(totalResolutionTime / resolvedAlerts.length);
+    }
+    
+    return { total, open, resolved, avgResolution };
+  }, [historyData]);
 
   return (
     <PageContainer
@@ -537,10 +604,10 @@ export default function AlertHistoryPage() {
                   <br />
                   <span style={{ color: '#666' }}>
                     {selectedAlert.triggeredAt 
-                      ? dayjs(selectedAlert.triggeredAt).format('YYYY-MM-DD HH:mm:ss')
+                      ? formatTimestamp(selectedAlert.triggeredAt)
                       : selectedAlert.receivedAt 
-                        ? dayjs(selectedAlert.receivedAt).format('YYYY-MM-DD HH:mm:ss')
-                        : dayjs(selectedAlert.createdAt).format('YYYY-MM-DD HH:mm:ss')
+                        ? formatTimestamp(selectedAlert.receivedAt)
+                        : formatTimestamp(selectedAlert.createdAt)
                     }
                   </span>
                 </Timeline.Item>
@@ -556,7 +623,7 @@ export default function AlertHistoryPage() {
                     )}
                     <br />
                     <span style={{ color: '#666' }}>
-                      {dayjs(selectedAlert.acknowledgedAt).format('YYYY-MM-DD HH:mm:ss')}
+                      {formatTimestamp(selectedAlert.acknowledgedAt)}
                     </span>
                   </Timeline.Item>
                 )}
@@ -569,7 +636,7 @@ export default function AlertHistoryPage() {
                     <strong>Resolved</strong>
                     <br />
                     <span style={{ color: '#666' }}>
-                      {dayjs(selectedAlert.resolvedAt).format('YYYY-MM-DD HH:mm:ss')}
+                      {formatTimestamp(selectedAlert.resolvedAt)}
                     </span>
                   </Timeline.Item>
                 )}

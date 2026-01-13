@@ -91,7 +91,6 @@ export default function RuleAssignmentModal({
         teamIds: teamIds,
         severity: existingAssignment.severity || 'MEDIUM',
         category: existingAssignment.category || 'OPERATIONAL',
-        assignmentStrategy: existingAssignment.assignmentStrategy || 'MANUAL',
       });
     } else if (visible) {
       setCurrentUserIds([]);
@@ -101,7 +100,6 @@ export default function RuleAssignmentModal({
       form.setFieldsValue({
         severity: 'MEDIUM',
         category: 'OPERATIONAL',
-        assignmentStrategy: 'MANUAL',
       });
     }
   }, [existingAssignment, visible, form]);
@@ -181,7 +179,6 @@ export default function RuleAssignmentModal({
         datasourceUid: rule.data?.[0]?.datasourceUid || datasourceUid,
         severity: values.severity || 'MEDIUM',
         category: values.category || 'OPERATIONAL',
-        assignmentStrategy: values.assignmentStrategy || 'MANUAL',
         autoAssignEnabled: true,
         active: true,
       });
@@ -316,7 +313,7 @@ export default function RuleAssignmentModal({
                     >
                       <List.Item.Meta
                         avatar={<Avatar icon={<UserOutlined />} size="small" />}
-                        title={user?.name || `User ${userId}`}
+                        title={user?.fullName || user?.name || user?.username || `User ${userId}`}
                         description={
                           <Space size="small">
                             {user?.email && <Text type="secondary">{user.email}</Text>}
@@ -433,19 +430,6 @@ export default function RuleAssignmentModal({
           </Select>
         </Form.Item>
 
-        <Form.Item
-          label="Assignment Strategy"
-          name="assignmentStrategy"
-          initialValue="MANUAL"
-          help="How cases should be assigned when alerts trigger"
-        >
-          <Radio.Group>
-            <Radio value="MANUAL">Manual - First available user</Radio>
-            <Radio value="ROUND_ROBIN">Round Robin - Distribute evenly</Radio>
-            <Radio value="LOAD_BASED">Load Based - Least busy user</Radio>
-            <Radio value="TEAM_BASED">Team Based - Team lead first</Radio>
-          </Radio.Group>
-        </Form.Item>
 
         <Divider>Team & User Assignment</Divider>
 
@@ -472,11 +456,11 @@ export default function RuleAssignmentModal({
               <Option 
                 key={user.id} 
                 value={user.id}
-                label={user.name}
+                label={user.fullName || user.name || user.username || user.email || `User ${user.id}`}
               >
                 <Space>
                   <UserOutlined />
-                  <span>{user.name}</span>
+                  <span>{user.fullName || user.name || user.username || user.email || `User ${user.id}`}</span>
                   <Tag color="blue">{user.role}</Tag>
                   {user.department && <Tag>{user.department}</Tag>}
                 </Space>
@@ -526,7 +510,7 @@ export default function RuleAssignmentModal({
         <div style={{ marginTop: 16, padding: '12px', backgroundColor: '#f0f2f5', borderRadius: '4px' }}>
           <Text type="secondary">
             <strong>Note:</strong> When an alert is triggered for this rule, all assigned users and team members will receive notifications. 
-            Cases will be automatically created and assigned based on the assignment strategy configured.
+            Cases will be automatically created and assigned based on the assignment settings configured.
           </Text>
         </div>
       </Form>
@@ -556,9 +540,6 @@ export default function RuleAssignmentModal({
             </Descriptions.Item>
             <Descriptions.Item label="Total Recipients">
               <Text strong>{existingAssignment.totalAssignedUsers || 0} users</Text>
-            </Descriptions.Item>
-            <Descriptions.Item label="Strategy">
-              <Text>{existingAssignment.assignmentStrategy || 'MANUAL'}</Text>
             </Descriptions.Item>
           </Descriptions>
         </div>

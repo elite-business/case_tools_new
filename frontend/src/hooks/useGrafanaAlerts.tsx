@@ -9,8 +9,8 @@ export const useGrafanaAlerts = (filters?: AlertFiltersEnhanced) => {
   return useQuery({
     queryKey: ['grafana-alerts', filters],
     queryFn: () => grafanaApi.getAlerts(filters),
-    refetchInterval: 30000, // Refetch every 30 seconds for real-time updates
-    staleTime: 10000, // Data is fresh for 10 seconds
+    refetchInterval: 60000, // Refetch every 60 seconds for real-time updates
+    staleTime: 30000, // Data is fresh for 10 seconds
   });
 };
 

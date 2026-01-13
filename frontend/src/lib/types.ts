@@ -267,6 +267,10 @@ export interface AlertHistory {
   value?: number;
   threshold?: number;
   assignedTo?: UserSummaryDto;
+  // Additional assignment fields from backend mapping
+  assignedToId?: number;
+  assignedToName?: string;
+  assignedToUsername?: string;
   caseId?: number; // Link to case if created
   notes?: string;
   rawPayload?: string; // Store original for audit
@@ -464,13 +468,30 @@ export interface Team {
   id: number;
   name: string;
   description?: string;
-  lead?: User;
-  members: User[];
+  lead?: User | UserSummaryDto;         // Can be either format
+  leader?: UserSummaryDto;              // Backend sends this field
+  members: User[] | TeamMemberResponse[]; // Can be either format
   department?: string;
   createdAt: string;
   updatedAt: string;
   isActive: boolean;
+  active?: boolean;                     // Backend also sends this field
+  memberCount?: number;                 // Backend sends this field
   performance?: TeamPerformance;
+}
+
+// Team member response from backend
+export interface TeamMemberResponse {
+  id: number;
+  user: UserSummaryDto;
+  username: string;
+  fullName: string;
+  email: string;
+  role: string;
+  joinedAt: string;
+  updatedAt?: string;
+  active: boolean;
+  specialization?: string;
 }
 
 export interface TeamPerformance {

@@ -9,7 +9,6 @@ import {
   Space,
   Button,
   Tooltip,
-  Divider,
   Badge,
   theme,
   Drawer,
@@ -27,10 +26,8 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  StarOutlined,
   BellOutlined,
   ClockCircleOutlined,
-  TrophyOutlined,
 } from '@ant-design/icons';
 import { useRouter, usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
@@ -85,8 +82,14 @@ const defaultMenuItems: MenuItem[] = [
     badge: 12,
     children: [
       {
+        key: 'cases-all',
+        label: 'All Cases',
+        icon: <FileSearchOutlined />,
+        path: '/cases',
+      },
+      {
         key: 'cases-new',
-        label: 'Create Case',
+        label: 'New Case',
         icon: <PlusOutlined />,
         path: '/cases/new',
       },
@@ -94,28 +97,23 @@ const defaultMenuItems: MenuItem[] = [
   },
   {
     key: 'alerts',
-    label: 'Alert Management',
+    label: 'Alerts',
     icon: <AlertOutlined />,
     path: '/alerts',
-    badge: 5,
     children: [
-      {
-        key: 'alerts-rules',
-        label: 'Alert Rules',
-        icon: <SettingOutlined />,
-        path: '/alerts/rules',
-      },
-      {
-        key: 'alerts-builder',
-        label: 'Rule Builder',
-        icon: <PlusOutlined />,
-        path: '/alerts/builder',
-      },
       {
         key: 'alerts-history',
         label: 'Alert History',
         icon: <ClockCircleOutlined />,
         path: '/alerts/history',
+        access: ['admin', 'manager'],
+      },
+      {
+        key: 'alerts-rules',
+        label: 'Alert Rules',
+        icon: <BellOutlined />,
+        path: '/alerts/rules',
+        access: ['admin', 'manager'],
       },
     ],
   },
@@ -124,26 +122,6 @@ const defaultMenuItems: MenuItem[] = [
     label: 'Analytics',
     icon: <BarChartOutlined />,
     path: '/analytics',
-    children: [
-      {
-        key: 'analytics-overview',
-        label: 'Overview',
-        icon: <DashboardOutlined />,
-        path: '/analytics/overview',
-      },
-      {
-        key: 'analytics-trends',
-        label: 'Trends',
-        icon: <BarChartOutlined />,
-        path: '/analytics/trends',
-      },
-      {
-        key: 'analytics-reports',
-        label: 'Reports',
-        icon: <FileSearchOutlined />,
-        path: '/analytics/reports',
-      },
-    ],
   },
   {
     key: 'admin',
@@ -165,23 +143,10 @@ const defaultMenuItems: MenuItem[] = [
         path: '/admin/teams',
       },
       {
-        key: 'admin-rule-assignments',
-        label: 'Rule Assignments',
-        icon: <BellOutlined />,
-        path: '/admin/rule-assignments',
-        badge: 0,
-      },
-      {
         key: 'admin-grafana',
         label: 'Grafana Settings',
         icon: <BarChartOutlined />,
         path: '/admin/grafana',
-      },
-      {
-        key: 'admin-system',
-        label: 'System Settings',
-        icon: <SettingOutlined />,
-        path: '/admin/system',
       },
     ],
   },
@@ -202,7 +167,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const router = useRouter();
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
-  const { permissions, hasRole } = useRoleAccess();
+  const { permissions } = useRoleAccess();
   const { 
     isDarkMode, 
     primaryColor, 
@@ -337,16 +302,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       if (item.key === 'admin-teams' && !permissions.canViewTeams) {
         return false;
       }
-      if (item.key === 'admin-rule-assignments' && !permissions.canViewRuleAssignments) {
-        return false;
-      }
       if (item.key === 'admin-grafana' && !permissions.canViewGrafanaIntegration) {
-        return false;
-      }
-      if (item.key === 'admin-system' && !permissions.canViewSystemSettings) {
-        return false;
-      }
-      if (item.key === 'alerts-builder' && !permissions.canManageAlerts) {
         return false;
       }
       
@@ -421,7 +377,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       return null;
     };
 
-  const menuItem = findMenuItem(resolvedMenuItems, key);
+    const menuItem = findMenuItem(resolvedMenuItems, key);
     if (menuItem && !menuItem.children) {
       if (menuItem.onClick) {
         menuItem.onClick();

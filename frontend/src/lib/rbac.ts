@@ -126,7 +126,7 @@ export const navigationPermissions: Record<string, UserRole[]> = {
   '/cases/resolved': [UserRole.ADMIN, UserRole.MANAGER, UserRole.ANALYST, UserRole.VIEWER],
   '/cases/new': [UserRole.ADMIN, UserRole.MANAGER], // Create new case - only admin and manager
   '/alerts': [UserRole.ADMIN, UserRole.MANAGER, UserRole.ANALYST, UserRole.VIEWER],
-  '/alerts/history': [UserRole.ADMIN, UserRole.MANAGER, UserRole.ANALYST, UserRole.VIEWER],
+  '/alerts/history': [UserRole.ADMIN, UserRole.MANAGER],
   '/alerts/rules': [UserRole.ADMIN, UserRole.MANAGER], // Alert rules - only admin and manager
   '/alerts/builder': [], // Removed - no one can access rule builder from navigation
   '/teams': [UserRole.ADMIN, UserRole.MANAGER],
