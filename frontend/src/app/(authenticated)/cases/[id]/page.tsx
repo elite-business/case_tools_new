@@ -176,6 +176,18 @@ export default function CaseDetailPage() {
       message.error(handleApiError(error));
     },
   });
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: CaseStatus }) =>
+      casesApi.updateStatus(id, status),
+    onSuccess: () => {
+      message.success('Case status updated successfully');
+      queryClient.invalidateQueries({ queryKey: ['cases', caseId] });
+      queryClient.invalidateQueries({ queryKey: ['cases'] });
+    },
+    onError: (error) => {
+      message.error(handleApiError(error));
+    },
+  });
 
   // Add comment mutation
   const addCommentMutation = useMutation({
@@ -227,6 +239,9 @@ export default function CaseDetailPage() {
     caseDetails?.assignedTeams?.length ||
     caseDetails?.assignedTo
   );
+  const workflowStatus: CaseStatus | undefined = caseDetails
+    ? (caseDetails.status === 'OPEN' && hasAssignees ? 'ASSIGNED' : caseDetails.status)
+    : undefined;
   const caseStats = caseStatsData?.data;
   const teamPerformance = teamPerformanceData?.data?.overall
     || teamPerformanceData?.data?.teams?.find((team: any) => team.teamId === selectedTeamId)
@@ -381,9 +396,9 @@ export default function CaseDetailPage() {
   };
 
   const handleStatusChange = async (newStatus: CaseStatus) => {
-    updateCaseMutation.mutate({ 
-      id: Number(caseId), 
-      data: { status: newStatus } 
+    updateStatusMutation.mutate({
+      id: Number(caseId),
+      status: newStatus,
     });
   };
 
@@ -522,7 +537,7 @@ export default function CaseDetailPage() {
             <Row align="middle" justify="space-between">
               <Col flex="auto">
                 <Steps 
-                  current={statusWorkflow[caseDetails.status]?.step || 0}
+                  current={workflowStatus ? statusWorkflow[workflowStatus]?.step || 0 : 0}
                   size="small"
                   items={[
                     { title: 'Open', description: 'Case created' },
@@ -956,7 +971,7 @@ export default function CaseDetailPage() {
                       <Text strong>Quick Actions:</Text>
                       <br />
                       <Space wrap style={{ marginTop: 8 }}>
-                        {statusWorkflow[caseDetails.status]?.next.map(nextStatus => (
+                        {(workflowStatus ? statusWorkflow[workflowStatus]?.next : []).map(nextStatus => (
                           <Button
                             key={nextStatus}
                             size="small"

@@ -225,7 +225,7 @@ public class CaseController {
      * Close case
      */
     @PostMapping("/{id}/close")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST', 'VIEWER')")
     @Operation(summary = "Close case")
     public ResponseEntity<CaseResponse> closeCase(
             @PathVariable Long id,
@@ -241,7 +241,7 @@ public class CaseController {
      * Get case statistics
      */
     @GetMapping("/stats")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'VIEWER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST', 'VIEWER')")
     @Operation(summary = "Get case statistics")
     public ResponseEntity<CaseStatsResponse> getCaseStats(
             @RequestParam(required = false) String period) {
@@ -334,7 +334,7 @@ public class CaseController {
      * Quick action endpoint
      */
     @PostMapping("/quick-action")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST','VIEWER')")
     @Operation(summary = "Perform quick action on case")
     public ResponseEntity<QuickActionResponse> performQuickAction(
             @Valid @RequestBody QuickActionRequest request,
@@ -369,7 +369,7 @@ public class CaseController {
      * Bulk close cases
      */
     @PostMapping("/bulk/close")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST', 'VIEWER')")
     @Operation(summary = "Bulk close cases")
     public ResponseEntity<BulkOperationResponse> bulkCloseCases(
             @Valid @RequestBody BulkCloseRequest request,
@@ -698,7 +698,7 @@ public class CaseController {
      * Update case status
      */
     @PutMapping("/{id}/status")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST','VIEWER')")
     @Operation(summary = "Update case status", description = "Update the status of a case")
     public ResponseEntity<CaseResponse> updateCaseStatus(
             @PathVariable Long id,

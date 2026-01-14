@@ -107,7 +107,7 @@ export default function AlertRulesPage() {
     enabled: canManageAlerts,
   });
 
-  const assignmentMap = useMemo(() => {
+  const assignmentMap = useMemo<Map<string, any>>(() => {
     const assignments = assignmentsResponse?.data?.content || [];
     return new Map(assignments.map((assignment: any) => [assignment.grafanaRuleUid, assignment]));
   }, [assignmentsResponse]);
@@ -468,7 +468,7 @@ export default function AlertRulesPage() {
           const rules = response.data || [];
           const enrichedRules = rules.map((rule: any) => {
             const ruleUid = rule.uid || rule.grafanaRuleUid;
-            const assignment = assignmentMap.get(ruleUid);
+            const assignment = assignmentMap.get(ruleUid) as any | undefined;
             if (!assignment) {
               return rule;
             }
